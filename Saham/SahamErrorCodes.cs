@@ -27,4 +27,18 @@ public static class SahamErrorCodes
     public const string NotRestaurantStaff = Prefix + "NotRestaurantStaff";
     public const string InvalidRestaurantStaffRole = Prefix + "InvalidRestaurantStaffRole";
     public const string InvalidStaffRole = Prefix + "InvalidStaffRole";
+
+    // Catalog & geography
+    public const string InvalidAmount = Prefix + "InvalidAmount";
+    public const string InvalidLocation = Prefix + "InvalidLocation";
+    public const string InvalidServiceArea = Prefix + "InvalidServiceArea";
+    public const string RestaurantIdRequired = Prefix + "RestaurantIdRequired";
+    public const string InvalidCommissionRate = Prefix + "InvalidCommissionRate";
+    public const string InvalidPrepMinutes = Prefix + "InvalidPrepMinutes";
+    public const string InvalidPauseUntil = Prefix + "InvalidPauseUntil";
+    public const string PauseReasonRequired = Prefix + "PauseReasonRequired";
+    public const string InvalidOpeningHours = Prefix + "InvalidOpeningHours";
+    public const string MenuCategoryNotInRestaurant = Prefix + "MenuCategoryNotInRestaurant";
+    public const string AddressDescriptionTooShort = Prefix + "AddressDescriptionTooShort";
+    public const string AddressOutsideServiceArea = Prefix + "AddressOutsideServiceArea";
 }

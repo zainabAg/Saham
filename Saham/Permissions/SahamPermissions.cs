@@ -1,4 +1,4 @@
-namespace Saham.Permissions;
+﻿namespace Saham.Permissions;
 
 /* Permission codes follow the RBAC matrix in SRS section 5.3.
  * Role grants live in Data/Seeding/RolesAndPermissionsDataSeedContributor. */
@@ -6,14 +6,6 @@ public static class SahamPermissions
 {
     public const string GroupName = "Saham";
 
-
-    public static class Books
-    {
-        public const string Default = GroupName + ".Books";
-        public const string Create = Default + ".Create";
-        public const string Edit = Default + ".Edit";
-        public const string Delete = Default + ".Delete";
-    }
 
     public static class Restaurants
     {

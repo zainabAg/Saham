@@ -132,6 +132,18 @@
     "Setting:Saham.Support.OpsCompensationLimit": "حد تعويض العمليات بدون موافقة (دينار)",
     "Setting:Saham.System.RecoveryMode": "وضع الاستعادة",
     "Setting:Saham.System.RecoveryModeMinutes": "مدة وضع الاستعادة (دقيقة)",
-    "Setting:Saham.System.IdempotencyRetentionDays": "مدة الاحتفاظ بمفاتيح التكرار (يوم)"
+    "Setting:Saham.System.IdempotencyRetentionDays": "مدة الاحتفاظ بمفاتيح التكرار (يوم)",
+    "Saham:InvalidAmount": "المبلغ غير صحيح.",
+    "Saham:InvalidLocation": "الموقع غير صحيح.",
+    "Saham:InvalidServiceArea": "منطقة الخدمة يجب أن تكون مضلعاً صحيحاً من 3 نقاط على الأقل.",
+    "Saham:RestaurantIdRequired": "اختر المطعم.",
+    "Saham:InvalidCommissionRate": "نسبة العمولة يجب أن تكون بين 0% و100%.",
+    "Saham:InvalidPrepMinutes": "وقت التجهيز يجب أن يكون بين {min} و{max} دقيقة.",
+    "Saham:InvalidPauseUntil": "وقت إعادة الفتح يجب أن يكون في المستقبل.",
+    "Saham:PauseReasonRequired": "يجب ذكر سبب الإغلاق المؤقت.",
+    "Saham:InvalidOpeningHours": "ساعات الدوام غير صحيحة أو متداخلة.",
+    "Saham:MenuCategoryNotInRestaurant": "القسم لا يتبع هذا المطعم.",
+    "Saham:AddressDescriptionTooShort": "اكتب وصفاً للعنوان من {minLength} أحرف على الأقل (المعالم القريبة).",
+    "Saham:AddressOutsideServiceArea": "التوصيل غير متاح لهذا الموقع."
   }
 }

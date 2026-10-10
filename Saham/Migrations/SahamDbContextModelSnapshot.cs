@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Saham.Data;
 using Volo.Abp.EntityFrameworkCore;
@@ -24,58 +25,6 @@ namespace Saham.Migrations
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("Saham.Entities.Books.Book", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("ConcurrencyStamp");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("CreationTime");
-
-                    b.Property<Guid?>("CreatorId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("CreatorId");
-
-                    b.Property<string>("ExtraProperties")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("ExtraProperties");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("LastModificationTime");
-
-                    b.Property<Guid?>("LastModifierId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("LastModifierId");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<float>("Price")
-                        .HasColumnType("real");
-
-                    b.Property<DateTime>("PublishDate")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AppBooks", (string)null);
-                });
 
             modelBuilder.Entity("Saham.Entities.Customers.CustomerProfile", b =>
                 {
@@ -130,6 +79,150 @@ namespace Saham.Migrations
                     b.ToTable("AppCustomerProfiles", null, t =>
                         {
                             t.HasCheckConstraint("CK_CustomerProfiles_NoShowCount", "\"NoShowCount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Geography.City", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Point>("Center")
+                        .IsRequired()
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<MultiPolygon>("ServiceArea")
+                        .HasColumnType("geography (multipolygon, 4326)");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AppCities", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Geography.CustomerAddress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("CustomLabel")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("DeleterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("DeleterId");
+
+                    b.Property<DateTime?>("DeletionTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("DeletionTime");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("IsDeleted");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<Point>("Location")
+                        .IsRequired()
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RecipientPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CityId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AppCustomerAddresses", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerAddresses_Description", "char_length(\"Description\") >= 1");
                         });
                 });
 
@@ -245,6 +338,264 @@ namespace Saham.Migrations
                     b.HasIndex("PhoneNumber", "CreationTime");
 
                     b.ToTable("AppSmsLogs", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.MenuCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<Guid>("RestaurantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId", "SortOrder");
+
+                    b.ToTable("AppMenuCategories", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.MenuItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsAvailable")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<long>("Price")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("RestaurantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId", "RestaurantId");
+
+                    b.HasIndex("RestaurantId", "CategoryId", "SortOrder");
+
+                    b.ToTable("AppMenuItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MenuItems_Price", "\"Price\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.Restaurant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AddressText")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("CityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CommissionRateBp")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<int>("DefaultPrepMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("DeleterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("DeleterId");
+
+                    b.Property<DateTime?>("DeletionTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("DeletionTime");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("IsDeleted");
+
+                    b.Property<bool>("IsPaused")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<Point>("Location")
+                        .IsRequired()
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long>("MinOrderAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PausedReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime?>("PausedUntil")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("TabletLastSeenAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Location");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Location"), "gist");
+
+                    b.HasIndex("CityId", "Status");
+
+                    b.ToTable("AppRestaurants", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Restaurants_CommissionRateBp", "\"CommissionRateBp\" BETWEEN 0 AND 10000");
+
+                            t.HasCheckConstraint("CK_Restaurants_DefaultPrepMinutes", "\"DefaultPrepMinutes\" BETWEEN 5 AND 120");
+
+                            t.HasCheckConstraint("CK_Restaurants_MinOrderAmount", "\"MinOrderAmount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.RestaurantHours", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<TimeOnly>("ClosesAt")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<string>("DayOfWeek")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<TimeOnly>("OpensAt")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid>("RestaurantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId", "DayOfWeek");
+
+                    b.ToTable("AppRestaurantHours", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RestaurantHours_OpensClose", "\"OpensAt\" <> \"ClosesAt\"");
+                        });
                 });
 
             modelBuilder.Entity("Saham.Entities.Restaurants.RestaurantStaff", b =>
@@ -2111,6 +2462,230 @@ namespace Saham.Migrations
                     b.ToTable("AbpSettingDefinitions", (string)null);
                 });
 
+            modelBuilder.Entity("Saham.Entities.Geography.City", b =>
+                {
+                    b.OwnsOne("Saham.Entities.Shared.I18nText", "Name", b1 =>
+                        {
+                            b1.Property<Guid>("CityId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Ar")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("En")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Fa")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Ur")
+                                .HasColumnType("text");
+
+                            b1.HasKey("CityId");
+
+                            b1.ToTable("AppCities");
+
+                            b1.ToJson("Name");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CityId");
+                        });
+
+                    b.Navigation("Name")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Geography.CustomerAddress", b =>
+                {
+                    b.HasOne("Saham.Entities.Geography.City", null)
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Volo.Abp.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.MenuCategory", b =>
+                {
+                    b.HasOne("Saham.Entities.Restaurants.Restaurant", null)
+                        .WithMany()
+                        .HasForeignKey("RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.OwnsOne("Saham.Entities.Shared.I18nText", "Name", b1 =>
+                        {
+                            b1.Property<Guid>("MenuCategoryId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Ar")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("En")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Fa")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Ur")
+                                .HasColumnType("text");
+
+                            b1.HasKey("MenuCategoryId");
+
+                            b1.ToTable("AppMenuCategories");
+
+                            b1.ToJson("Name");
+
+                            b1.WithOwner()
+                                .HasForeignKey("MenuCategoryId");
+                        });
+
+                    b.Navigation("Name")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.MenuItem", b =>
+                {
+                    b.HasOne("Saham.Entities.Restaurants.Restaurant", null)
+                        .WithMany()
+                        .HasForeignKey("RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Restaurants.MenuCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId", "RestaurantId")
+                        .HasPrincipalKey("Id", "RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.OwnsOne("Saham.Entities.Shared.I18nText", "Description", b1 =>
+                        {
+                            b1.Property<Guid>("MenuItemId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Ar")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("En")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Fa")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Ur")
+                                .HasColumnType("text");
+
+                            b1.HasKey("MenuItemId");
+
+                            b1.ToTable("AppMenuItems");
+
+                            b1.ToJson("Description");
+
+                            b1.WithOwner()
+                                .HasForeignKey("MenuItemId");
+                        });
+
+                    b.OwnsOne("Saham.Entities.Shared.I18nText", "Name", b1 =>
+                        {
+                            b1.Property<Guid>("MenuItemId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Ar")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("En")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Fa")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Ur")
+                                .HasColumnType("text");
+
+                            b1.HasKey("MenuItemId");
+
+                            b1.ToTable("AppMenuItems");
+
+                            b1.ToJson("Name");
+
+                            b1.WithOwner()
+                                .HasForeignKey("MenuItemId");
+                        });
+
+                    b.Navigation("Description");
+
+                    b.Navigation("Name")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.Restaurant", b =>
+                {
+                    b.HasOne("Saham.Entities.Geography.City", null)
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.OwnsOne("Saham.Entities.Shared.I18nText", "Name", b1 =>
+                        {
+                            b1.Property<Guid>("RestaurantId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Ar")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("En")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Fa")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Ur")
+                                .HasColumnType("text");
+
+                            b1.HasKey("RestaurantId");
+
+                            b1.ToTable("AppRestaurants");
+
+                            b1.ToJson("Name");
+
+                            b1.WithOwner()
+                                .HasForeignKey("RestaurantId");
+                        });
+
+                    b.Navigation("Name")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.RestaurantHours", b =>
+                {
+                    b.HasOne("Saham.Entities.Restaurants.Restaurant", null)
+                        .WithMany("Hours")
+                        .HasForeignKey("RestaurantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.RestaurantStaff", b =>
+                {
+                    b.HasOne("Saham.Entities.Restaurants.Restaurant", null)
+                        .WithMany()
+                        .HasForeignKey("RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Volo.Abp.AuditLogging.AuditLogAction", b =>
                 {
                     b.HasOne("Volo.Abp.AuditLogging.AuditLog", null)
@@ -2251,6 +2826,11 @@ namespace Saham.Migrations
                     b.HasOne("Volo.Abp.OpenIddict.Authorizations.OpenIddictAuthorization", null)
                         .WithMany()
                         .HasForeignKey("AuthorizationId");
+                });
+
+            modelBuilder.Entity("Saham.Entities.Restaurants.Restaurant", b =>
+                {
+                    b.Navigation("Hours");
                 });
 
             modelBuilder.Entity("Volo.Abp.AuditLogging.AuditLog", b =>

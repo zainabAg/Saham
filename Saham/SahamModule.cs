@@ -57,6 +57,7 @@ using Microsoft.AspNetCore.Mvc;
 using Saham.BackgroundWorkers;
 using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
+using Saham.Entities.Restaurants;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Volo.Abp.AspNetCore.ExceptionHandling;
@@ -65,6 +66,8 @@ using Volo.Abp.Auditing;
 using Volo.Abp.BackgroundWorkers;
 using Volo.Abp.OpenIddict.ExtensionGrantTypes;
 using Volo.Abp.Sms;
+using NetTopologySuite.IO.Converters;
+using Volo.Abp.Json.SystemTextJson;
 using Volo.Abp.Timing;
 
 namespace Saham;
@@ -206,7 +209,19 @@ public class SahamModule : AbpModule
         ConfigureIdempotency();
         ConfigureEntityHistory();
         ConfigureClock();
+        ConfigureJson();
     }
+
+    /* PostGIS points/polygons are written as GeoJSON wherever ABP serializes entities
+     * (entity change history, audit logs); the default serializer fails on NaN Z/M values. */
+    private void ConfigureJson()
+    {
+        Configure<AbpSystemTextJsonSerializerOptions>(options =>
+        {
+            options.JsonSerializerOptions.Converters.Add(new GeoJsonConverterFactory());
+        });
+    }
+
 
     /* All times are stored and returned in UTC; clients convert to the city's time zone. */
     private void ConfigureClock()
@@ -237,6 +252,21 @@ public class SahamModule : AbpModule
             options.Map(SahamErrorCodes.InvalidPhoneNumber, HttpStatusCode.BadRequest);
             options.Map(SahamErrorCodes.OtpTooManyRequests, HttpStatusCode.TooManyRequests);
             options.Map(SahamErrorCodes.PhoneAlreadyRegistered, HttpStatusCode.Conflict);
+
+            // Invalid input detected by domain rules
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.InvalidStaffRole, SahamErrorCodes.InvalidRestaurantStaffRole,
+                         SahamErrorCodes.InvalidAmount, SahamErrorCodes.InvalidLocation,
+                         SahamErrorCodes.InvalidServiceArea, SahamErrorCodes.RestaurantIdRequired,
+                         SahamErrorCodes.InvalidCommissionRate, SahamErrorCodes.InvalidPrepMinutes,
+                         SahamErrorCodes.InvalidPauseUntil, SahamErrorCodes.PauseReasonRequired,
+                         SahamErrorCodes.InvalidOpeningHours, SahamErrorCodes.MenuCategoryNotInRestaurant,
+                         SahamErrorCodes.AddressDescriptionTooShort, SahamErrorCodes.AddressOutsideServiceArea
+                     })
+            {
+                options.Map(code, HttpStatusCode.BadRequest);
+            }
         });
     }
 
@@ -430,6 +460,12 @@ public class SahamModule : AbpModule
              * Documentation: https://docs.abp.io/en/abp/latest/Entity-Framework-Core#add-default-repositories
              */
             options.AddDefaultRepositories(includeAllEntities: true);
+
+            /* Repository GetAsync/WithDetailsAsync load these children by default. */
+            options.Entity<Restaurant>(entity =>
+            {
+                entity.DefaultWithDetailsFunc = query => query.Include(r => r.Hours);
+            });
         });
 
         Configure<AbpDbContextOptions>(options =>

@@ -245,12 +245,14 @@ amount_due = T + debt_collected − credit_applied
 - [x] `StaffUserAppService` (المالك ينشئ موظفين)، `RestaurantStaffAppService` (المدير ينشئ مطبخ/كاشير لمطعمه فقط — SOD-05).
 - [x] إضافات: `SmsLogAppService` (سجل الرسائل للوحة الإدارة)، `PhoneAuthAppService.SendOtp`، `HousekeepingWorker` (حذف مفاتيح التكرار ورموز OTP القديمة)، Migration `Phase0_1_Foundation_Identity`.
 
-### المرحلة 2 — الكتالوج والجغرافيا (يوم 2)
-- [ ] `City` (كربلاء seed)، `Restaurant`, `RestaurantHours`, `MenuCategory`, `MenuItem`.
-- [ ] `RestaurantAdminAppService` — **CRUD على نمط BookAppService** (المالك: إنشاء، تفعيل، نسبة العمولة).
-- [ ] `MenuAppService` (المدير: إدارة؛ المطبخ: `ToggleAvailability` فقط)، `RestaurantProfileAppService` (الدوام، الحد الأدنى، `Pause/Resume`).
-- [ ] `RestaurantBrowseAppService` للزبون: «مفتوح الآن» حسب الدوام والإغلاق المؤقت.
-- [ ] `CustomerAddress` + `AddressAppService` (وصف ≥ 5 أحرف، المستلم، رفض > 10 كم).
+### المرحلة 2 — الكتالوج والجغرافيا (يوم 2) ✅
+- [x] `City` (كربلاء seed، منطقة خدمة كمضلع اختياري)، `Restaurant`, `RestaurantHours`, `MenuCategory`, `MenuItem`؛ الأسماء `I18nText` (jsonb: ar إلزامي + en/fa/ur).
+- [x] `RestaurantAdminAppService` — **CRUD على نمط BookAppService** (المالك: إنشاء، تعديل، تفعيل/إيقاف، نسبة العمولة، إنشاء حساب المدير).
+- [x] `MenuAppService` (المدير: إدارة؛ المطبخ: `SetItemAvailability` فقط)، `RestaurantProfileAppService` (الدوام بما فيه بعد منتصف الليل، الحد الأدنى، وقت التجهيز، `Pause/Resume`).
+- [x] `RestaurantBrowseAppService` للزبون: «يستقبل الآن» حسب الدوام والإغلاق المؤقت، و«يفتح الساعة …» للمغلق، والمسافة.
+- [x] `CustomerAddress` + `AddressAppService` (وصف ≥ 5 أحرف، المستلم، داخل منطقة الخدمة). **رفض > 10 كم يُفحص عند عرض السعر (المرحلة 3)** لأنه يعتمد على المطعم.
+- [x] `CityAppService` (رسم منطقة الخدمة للمالك)، `RestaurantStaffManager` مشترك، `ICurrentScope.ResolveRestaurantIdAsync` (المالك/العمليات يمررون `restaurantId`).
+- [x] حذف مثال `Book`، Migration `Phase2_Catalog_Geography`، بيانات تجريبية (3 مطاعم بحسابات).
 
 ### المرحلة 3 — التسعير وعرض السعر (يوم 2)
 - [ ] `PricingPlan` + `PricingTier` + Seed بالقيم المعتمدة؛ `PricingPlanAppService` للمالك (الخطة النشطة لا تُعدّل → خطة جديدة).
@@ -313,7 +315,7 @@ amount_due = T + debt_collected − credit_applied
 ---
 
 ## 8. ما يُحذف/يُنظف
-- مثال `Book` (الكيان، الخدمة، DTOs، الصلاحيات، الـ Seeder) — **نبقيه مرجعاً حتى نهاية المرحلة 2 ثم نحذفه** مع Migration تحذف الجدول.
+- ~~مثال `Book`~~ — حُذف في المرحلة 2 مع جدوله.
 - اللغات `fo` و `ps-PK`.
 
 ---

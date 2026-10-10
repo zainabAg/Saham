@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Saham.Entities.Restaurants;
 using Volo.Abp;
 using Volo.Abp.Authorization;
 using Volo.Abp.DependencyInjection;
+using Volo.Abp.Domain.Entities;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Users;
 
@@ -19,6 +20,12 @@ public interface ICurrentScope
     Task<RestaurantStaff> GetRestaurantStaffAsync();
 
     Task<Guid> GetRestaurantIdAsync();
+
+    /* Restaurant staff always act on their own restaurant (another requested id is "not found").
+     * Company staff (owner, ops) have no restaurant link and must name the restaurant. */
+    Task<Guid> ResolveRestaurantIdAsync(Guid? requestedRestaurantId);
+
+    Task<bool> IsRestaurantStaffAsync();
 }
 
 public class CurrentScope : ICurrentScope, IScopedDependency
@@ -37,23 +44,50 @@ public class CurrentScope : ICurrentScope, IScopedDependency
 
     public async Task<RestaurantStaff> GetRestaurantStaffAsync()
     {
-        if (_restaurantStaff != null)
-        {
-            return _restaurantStaff;
-        }
-
-        var userId = UserId;
-        _restaurantStaff = await _restaurantStaffRepository.FindAsync(x => x.UserId == userId && x.IsActive);
-        if (_restaurantStaff == null)
+        if (await FindRestaurantStaffAsync() == null)
         {
             throw new AbpAuthorizationException(code: SahamErrorCodes.NotRestaurantStaff);
         }
 
-        return _restaurantStaff;
+        return _restaurantStaff!;
     }
 
     public async Task<Guid> GetRestaurantIdAsync()
     {
         return (await GetRestaurantStaffAsync()).RestaurantId;
+    }
+
+    public async Task<Guid> ResolveRestaurantIdAsync(Guid? requestedRestaurantId)
+    {
+        var staff = await FindRestaurantStaffAsync();
+        if (staff != null)
+        {
+            if (requestedRestaurantId.HasValue && requestedRestaurantId.Value != staff.RestaurantId)
+            {
+                throw new EntityNotFoundException(typeof(Restaurant), requestedRestaurantId.Value);
+            }
+
+            return staff.RestaurantId;
+        }
+
+        if (!requestedRestaurantId.HasValue)
+        {
+            throw new BusinessException(SahamErrorCodes.RestaurantIdRequired);
+        }
+
+        return requestedRestaurantId.Value;
+    }
+
+    public async Task<bool> IsRestaurantStaffAsync() => await FindRestaurantStaffAsync() != null;
+
+    private async Task<RestaurantStaff?> FindRestaurantStaffAsync()
+    {
+        if (_restaurantStaff == null)
+        {
+            var userId = UserId;
+            _restaurantStaff = await _restaurantStaffRepository.FindAsync(x => x.UserId == userId && x.IsActive);
+        }
+
+        return _restaurantStaff;
     }
 }
