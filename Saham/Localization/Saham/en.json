@@ -154,6 +154,19 @@
     "Saham:InvalidOpeningHours": "Opening hours are invalid or overlapping.",
     "Saham:MenuCategoryNotInRestaurant": "The section does not belong to this restaurant.",
     "Saham:AddressDescriptionTooShort": "Describe the address with at least {minLength} characters (nearby landmarks).",
-    "Saham:AddressOutsideServiceArea": "Delivery is not available at this location."
+    "Saham:AddressOutsideServiceArea": "Delivery is not available at this location.",
+    "Saham:InvalidPricingPlan": "Invalid pricing plan values.",
+    "Saham:InvalidPricingTiers": "Distance bands must start at 0 and reach the maximum distance without gaps or overlaps.",
+    "Saham:PricingPlanNotEditable": "Only a draft plan can be changed. Create a new plan from the active one.",
+    "Saham:NoActivePricingPlan": "Delivery is not available in this city yet.",
+    "Saham:EmptyCart": "The cart is empty.",
+    "Saham:InvalidQuantity": "Quantity must be between 1 and {max}.",
+    "Saham:ItemUnavailable": "An item in your cart is no longer available.",
+    "Saham:RestaurantClosed": "The restaurant is closed now. You can schedule the order.",
+    "Saham:BelowMinOrder": "The minimum order is {minOrder} IQD. Add {missing} IQD more.",
+    "Saham:AddressOutOfRange": "We do not deliver farther than {maxKm} km from the restaurant.",
+    "Saham:InvalidScheduleTime": "Choose a time at least {minLeadMinutes} minutes ahead, within {maxDays} days, during the restaurant's hours.",
+    "Saham:QuoteExpired": "Prices may have changed. Please review the order again.",
+    "Saham:QuoteAlreadyUsed": "This quote was already used for an order."
   }
 }

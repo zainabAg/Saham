@@ -1,4 +1,4 @@
-namespace Saham.Settings;
+﻿namespace Saham.Settings;
 
 /* Every ASM-nn value in the SRS is a setting, never a constant in code (SRS 3.3). */
 public static class SahamSettings
@@ -24,6 +24,10 @@ public static class SahamSettings
         public const string QuoteLifetimeMinutes = Prefix + ".Orders.QuoteLifetimeMinutes";
         public const string WalletPaymentTimeoutMinutes = Prefix + ".Orders.WalletPaymentTimeoutMinutes";
         public const string AddressMinDescriptionLength = Prefix + ".Orders.AddressMinDescriptionLength";
+        public const string ScheduleMinLeadMinutes = Prefix + ".Orders.ScheduleMinLeadMinutes";
+        public const string ScheduleMaxDays = Prefix + ".Orders.ScheduleMaxDays";
+        public const string AverageSpeedKmh = Prefix + ".Orders.AverageSpeedKmh";
+        public const string PickupBufferMinutes = Prefix + ".Orders.PickupBufferMinutes";
     }
 
     public static class Dispatch

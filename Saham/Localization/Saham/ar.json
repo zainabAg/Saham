@@ -144,6 +144,19 @@
     "Saham:InvalidOpeningHours": "ساعات الدوام غير صحيحة أو متداخلة.",
     "Saham:MenuCategoryNotInRestaurant": "القسم لا يتبع هذا المطعم.",
     "Saham:AddressDescriptionTooShort": "اكتب وصفاً للعنوان من {minLength} أحرف على الأقل (المعالم القريبة).",
-    "Saham:AddressOutsideServiceArea": "التوصيل غير متاح لهذا الموقع."
+    "Saham:AddressOutsideServiceArea": "التوصيل غير متاح لهذا الموقع.",
+    "Saham:InvalidPricingPlan": "قيم خطة التسعير غير صحيحة.",
+    "Saham:InvalidPricingTiers": "شرائح المسافة يجب أن تبدأ من 0 وتصل للحد الأقصى بلا فجوات ولا تداخل.",
+    "Saham:PricingPlanNotEditable": "لا يمكن تعديل إلا الخطة المسودة. أنشئ خطة جديدة من الخطة النشطة.",
+    "Saham:NoActivePricingPlan": "التوصيل غير متاح في هذه المدينة حالياً.",
+    "Saham:EmptyCart": "السلة فارغة.",
+    "Saham:InvalidQuantity": "الكمية يجب أن تكون بين 1 و{max}.",
+    "Saham:ItemUnavailable": "مادة في سلتك لم تعد متوفرة.",
+    "Saham:RestaurantClosed": "المطعم مغلق الآن. يمكنك جدولة الطلب.",
+    "Saham:BelowMinOrder": "الحد الأدنى للطلب {minOrder} دينار. أضف {missing} دينار.",
+    "Saham:AddressOutOfRange": "لا نوصل أبعد من {maxKm} كم عن المطعم.",
+    "Saham:InvalidScheduleTime": "اختر وقتاً بعد {minLeadMinutes} دقيقة على الأقل، خلال {maxDays} أيام، ضمن دوام المطعم.",
+    "Saham:QuoteExpired": "قد تكون الأسعار تغيرت. راجع الطلب من جديد.",
+    "Saham:QuoteAlreadyUsed": "عرض السعر هذا استُخدم لطلب سابق."
   }
 }

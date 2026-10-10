@@ -254,10 +254,12 @@ amount_due = T + debt_collected − credit_applied
 - [x] `CityAppService` (رسم منطقة الخدمة للمالك)، `RestaurantStaffManager` مشترك، `ICurrentScope.ResolveRestaurantIdAsync` (المالك/العمليات يمررون `restaurantId`).
 - [x] حذف مثال `Book`، Migration `Phase2_Catalog_Geography`، بيانات تجريبية (3 مطاعم بحسابات).
 
-### المرحلة 3 — التسعير وعرض السعر (يوم 2)
-- [ ] `PricingPlan` + `PricingTier` + Seed بالقيم المعتمدة؛ `PricingPlanAppService` للمالك (الخطة النشطة لا تُعدّل → خطة جديدة).
-- [ ] `PricingCalculator` + اختبارات وحدة بأمثلة القسم 12.6.
-- [ ] `QuoteAppService.CreateAsync` (المجموع، الرسوم، المجاني، الحد الأدنى، الدين السابق، الرصيد، `amount_due`، الوقت المتوقع).
+### المرحلة 3 — التسعير وعرض السعر (يوم 2) ✅
+- [x] `PricingPlan` + `PricingTier` + Seed بالقيم المعتمدة؛ `PricingPlanAppService` للمالك: مسودة (أو نسخة من النشطة) ← تعديل ← تفعيل، والخطة النشطة لا تُعدّل، وخطة نشطة واحدة لكل مدينة (فهرس جزئي فريد).
+- [x] `PricingCalculator` — مطابق لأمثلة القسم 12.6 (S=23,000، 4.2 كم ← رسوم 3,000، T=26,000، C=2,300، R=20,700، P=1,500).
+- [x] `QuoteAppService.CreateAsync` + `QuoteManager`: الدوام/الإغلاق، صلاحية العنوان، ≤ 10 كم، توفر المواد، الحد الأدنى، المجاني و«أضف X للمجاني»، الدين والرصيد (`ICustomerBalanceProvider` = صفر لحين الدفتر في المرحلة 7)، منع الكاش، الوقت المتوقع كمدى، والطلب المجدول (60 د – 3 أيام ضمن الدوام).
+- [x] لقطة العرض (`QuoteSnapshot` jsonb + hash) لاستخدامها عند إنشاء الطلب في المرحلة 4 (`PRICE_CHANGED`).
+- [ ] الكوبونات مؤجلة لإضافات المرحلة 9 (الحقول موجودة و K = 0).
 
 ### المرحلة 4 — الطلب ودورة حياته عند المطعم (يوم 3)
 - [ ] `Order` + `OrderItem` + `OrderStatusHistory` + `OrderStateMachine` + `OrderManager`.

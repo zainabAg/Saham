@@ -14,6 +14,7 @@ using Saham.Entities.Customers;
 using Saham.Entities.Geography;
 using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
+using Saham.Entities.Pricing;
 using Saham.Entities.Restaurants;
 using Saham.Infrastructure.Idempotency;
 
@@ -36,6 +37,11 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
     public DbSet<City> Cities { get; set; }
     public DbSet<CustomerAddress> CustomerAddresses { get; set; }
 
+    // M04 Pricing & Promotions
+    public DbSet<PricingPlan> PricingPlans { get; set; }
+    public DbSet<PricingTier> PricingTiers { get; set; }
+    public DbSet<Quote> Quotes { get; set; }
+
     // M10 Notifications
     public DbSet<SmsLog> SmsLogs { get; set; }
 
@@ -52,6 +58,10 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        // Value records stored as JSON columns; must not be discovered as entities
+        // (ABP's base configuration would otherwise pin them as entity types).
+        PricingConfiguration.IgnoreJsonValueTypes(builder);
+
         base.OnModelCreating(builder);
 
         builder.HasPostgresExtension("postgis");
@@ -71,6 +81,7 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
         builder.ConfigureSahamIdentity();
         builder.ConfigureSahamGeography();
         builder.ConfigureSahamCatalog();
+        builder.ConfigureSahamPricing();
         builder.ConfigureSahamNotifications();
         builder.ConfigureSahamInfrastructure();
     }

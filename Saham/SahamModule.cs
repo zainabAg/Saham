@@ -58,6 +58,7 @@ using Saham.BackgroundWorkers;
 using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
 using Saham.Entities.Restaurants;
+using Saham.Entities.Pricing;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Volo.Abp.AspNetCore.ExceptionHandling;
@@ -262,11 +263,28 @@ public class SahamModule : AbpModule
                          SahamErrorCodes.InvalidCommissionRate, SahamErrorCodes.InvalidPrepMinutes,
                          SahamErrorCodes.InvalidPauseUntil, SahamErrorCodes.PauseReasonRequired,
                          SahamErrorCodes.InvalidOpeningHours, SahamErrorCodes.MenuCategoryNotInRestaurant,
-                         SahamErrorCodes.AddressDescriptionTooShort, SahamErrorCodes.AddressOutsideServiceArea
+                         SahamErrorCodes.AddressDescriptionTooShort, SahamErrorCodes.AddressOutsideServiceArea,
+                         SahamErrorCodes.InvalidPricingPlan, SahamErrorCodes.InvalidPricingTiers,
+                         SahamErrorCodes.EmptyCart, SahamErrorCodes.InvalidQuantity
                      })
             {
                 options.Map(code, HttpStatusCode.BadRequest);
             }
+
+            // The cart cannot be priced as it is (SRS 15: 422 on POST /quotes)
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.ItemUnavailable, SahamErrorCodes.RestaurantClosed,
+                         SahamErrorCodes.BelowMinOrder, SahamErrorCodes.AddressOutOfRange,
+                         SahamErrorCodes.InvalidScheduleTime, SahamErrorCodes.NoActivePricingPlan
+                     })
+            {
+                options.Map(code, HttpStatusCode.UnprocessableEntity);
+            }
+
+            options.Map(SahamErrorCodes.PricingPlanNotEditable, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.QuoteExpired, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.QuoteAlreadyUsed, HttpStatusCode.Conflict);
         });
     }
 
@@ -283,7 +301,7 @@ public class SahamModule : AbpModule
      * except technical tables that hold secrets or high-volume rows. */
     private void ConfigureEntityHistory()
     {
-        var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord) };
+        var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord), typeof(Quote) };
 
         Configure<AbpAuditingOptions>(options =>
         {
@@ -465,6 +483,10 @@ public class SahamModule : AbpModule
             options.Entity<Restaurant>(entity =>
             {
                 entity.DefaultWithDetailsFunc = query => query.Include(r => r.Hours);
+            });
+            options.Entity<PricingPlan>(entity =>
+            {
+                entity.DefaultWithDetailsFunc = query => query.Include(p => p.Tiers);
             });
         });
 

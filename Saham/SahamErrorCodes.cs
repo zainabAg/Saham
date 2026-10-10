@@ -1,4 +1,4 @@
-namespace Saham;
+﻿namespace Saham;
 
 /* Business error codes (SRS sections 10.7, 11.3).
  * Each code is localized under the same key in Localization/Saham/*.json
@@ -41,4 +41,19 @@ public static class SahamErrorCodes
     public const string MenuCategoryNotInRestaurant = Prefix + "MenuCategoryNotInRestaurant";
     public const string AddressDescriptionTooShort = Prefix + "AddressDescriptionTooShort";
     public const string AddressOutsideServiceArea = Prefix + "AddressOutsideServiceArea";
+
+    // Pricing & quotes
+    public const string InvalidPricingPlan = Prefix + "InvalidPricingPlan";
+    public const string InvalidPricingTiers = Prefix + "InvalidPricingTiers";
+    public const string PricingPlanNotEditable = Prefix + "PricingPlanNotEditable";
+    public const string NoActivePricingPlan = Prefix + "NoActivePricingPlan";
+    public const string EmptyCart = Prefix + "EmptyCart";
+    public const string InvalidQuantity = Prefix + "InvalidQuantity";
+    public const string ItemUnavailable = Prefix + "ItemUnavailable";
+    public const string RestaurantClosed = Prefix + "RestaurantClosed";
+    public const string BelowMinOrder = Prefix + "BelowMinOrder";
+    public const string AddressOutOfRange = Prefix + "AddressOutOfRange";
+    public const string InvalidScheduleTime = Prefix + "InvalidScheduleTime";
+    public const string QuoteExpired = Prefix + "QuoteExpired";
+    public const string QuoteAlreadyUsed = Prefix + "QuoteAlreadyUsed";
 }

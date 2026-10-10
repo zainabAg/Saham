@@ -2,6 +2,7 @@
 using NetTopologySuite.Geometries;
 using Saham.Entities.Geography;
 using Saham.Entities.Notifications;
+using Saham.Entities.Pricing;
 using Saham.Entities.Restaurants;
 using Saham.Entities.Shared;
 using Saham.Services.Dtos.Customers;
@@ -26,6 +27,8 @@ public class SahamAutoMapperProfile : Profile
             .Ignore(d => d.DisplayName)
             .Ignore(d => d.ServiceArea);
         CreateMap<Restaurant, RestaurantDto>();
+        CreateMap<PricingPlan, PricingPlanDto>();
+        CreateMap<PricingTier, PricingTierDto>();
 
         // Shared value objects
         CreateMap<I18nText, I18nTextDto>();

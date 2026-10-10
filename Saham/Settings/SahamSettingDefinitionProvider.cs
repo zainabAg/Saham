@@ -1,4 +1,4 @@
-using Saham.Localization;
+﻿using Saham.Localization;
 using Volo.Abp.Localization;
 using Volo.Abp.Settings;
 
@@ -25,6 +25,10 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Orders.QuoteLifetimeMinutes, "10");
         Add(context, SahamSettings.Orders.WalletPaymentTimeoutMinutes, "15");  // ASM-17
         Add(context, SahamSettings.Orders.AddressMinDescriptionLength, "5");   // ASM-22
+        Add(context, SahamSettings.Orders.ScheduleMinLeadMinutes, "60");       // BR-020 / REC-13
+        Add(context, SahamSettings.Orders.ScheduleMaxDays, "3");               // DEC-02
+        Add(context, SahamSettings.Orders.AverageSpeedKmh, "20");              // ETA estimate (motorbike in town)
+        Add(context, SahamSettings.Orders.PickupBufferMinutes, "5");           // ETA: driver reaching the restaurant
 
         // Dispatch
         Add(context, SahamSettings.Dispatch.OfferTimeoutSeconds, "30");        // S-08
