@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Cors;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
@@ -51,6 +52,20 @@ using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore.PostgreSql;
 using Volo.Abp.Studio.Client.AspNetCore;
+using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Saham.BackgroundWorkers;
+using Saham.Entities.Identity;
+using Saham.Entities.Notifications;
+using Saham.Identity;
+using Saham.Infrastructure.Idempotency;
+using Volo.Abp.AspNetCore.ExceptionHandling;
+using Volo.Abp.AspNetCore.SignalR;
+using Volo.Abp.Auditing;
+using Volo.Abp.BackgroundWorkers;
+using Volo.Abp.OpenIddict.ExtensionGrantTypes;
+using Volo.Abp.Sms;
+using Volo.Abp.Timing;
 
 namespace Saham;
 
@@ -63,6 +78,9 @@ namespace Saham;
     typeof(AbpSwashbuckleModule),
     typeof(AbpAspNetCoreSerilogModule),
     typeof(AbpStudioClientAspNetCoreModule),
+    typeof(AbpAspNetCoreSignalRModule),
+    typeof(AbpSmsModule),
+    typeof(AbpBackgroundWorkersModule),
 
     // theme
     typeof(AbpAspNetCoreMvcUiBasicThemeModule),
@@ -128,6 +146,14 @@ public class SahamModule : AbpModule
             });
         });
 
+        PreConfigure<OpenIddictServerBuilder>(builder =>
+        {
+            builder.Configure(options =>
+            {
+                options.GrantTypes.Add(PhoneOtpTokenExtensionGrant.ExtensionGrantName);
+            });
+        });
+
         if (!hostingEnvironment.IsDevelopment())
         {
             PreConfigure<AbpOpenIddictAspNetCoreOptions>(options =>
@@ -175,6 +201,68 @@ public class SahamModule : AbpModule
         ConfigureDataProtection(context);
         ConfigureVirtualFiles(hostingEnvironment);
         ConfigureEfCore(context);
+        ConfigureExtensionGrants();
+        ConfigureExceptionHandling();
+        ConfigureIdempotency();
+        ConfigureEntityHistory();
+        ConfigureClock();
+    }
+
+    /* All times are stored and returned in UTC; clients convert to the city's time zone. */
+    private void ConfigureClock()
+    {
+        Configure<AbpClockOptions>(options =>
+        {
+            options.Kind = DateTimeKind.Utc;
+        });
+    }
+
+    private void ConfigureExtensionGrants()
+    {
+        Configure<AbpOpenIddictExtensionGrantsOptions>(options =>
+        {
+            options.Grants.Add(PhoneOtpTokenExtensionGrant.ExtensionGrantName, new PhoneOtpTokenExtensionGrant());
+        });
+    }
+
+    /* Business errors that mean "the state changed under you" are 409 (SRS 10.7, EX-11). */
+    private void ConfigureExceptionHandling()
+    {
+        Configure<AbpExceptionHttpStatusCodeOptions>(options =>
+        {
+            options.Map(SahamErrorCodes.InvalidStateTransition, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.IdempotencyConflict, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.RequestInProgress, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.IdempotencyKeyRequired, HttpStatusCode.BadRequest);
+            options.Map(SahamErrorCodes.InvalidPhoneNumber, HttpStatusCode.BadRequest);
+            options.Map(SahamErrorCodes.OtpTooManyRequests, HttpStatusCode.TooManyRequests);
+            options.Map(SahamErrorCodes.PhoneAlreadyRegistered, HttpStatusCode.Conflict);
+        });
+    }
+
+    /* Added after ABP's unit-of-work filter, so it runs inside the request transaction. */
+    private void ConfigureIdempotency()
+    {
+        Configure<MvcOptions>(options =>
+        {
+            options.Filters.AddService<IdempotencyActionFilter>();
+        });
+    }
+
+    /* "Who changed what and when" (S-15, SRS 5.5) for every Saham entity,
+     * except technical tables that hold secrets or high-volume rows. */
+    private void ConfigureEntityHistory()
+    {
+        var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord) };
+
+        Configure<AbpAuditingOptions>(options =>
+        {
+            options.EntityHistorySelectors.Add(new NamedTypeSelector(
+                "SahamEntities",
+                type => type.Namespace != null &&
+                        type.Namespace.StartsWith("Saham.Entities") &&
+                        !excluded.Contains(type)));
+        });
     }
     
 
@@ -247,8 +335,6 @@ public class SahamModule : AbpModule
             
             options.Languages.Add(new LanguageInfo("en", "en", "English")); 
             options.Languages.Add(new LanguageInfo("ar", "ar", "العربية")); 
-            options.Languages.Add(new LanguageInfo("fo", "fo", "Faroese")); 
-            options.Languages.Add(new LanguageInfo("ps-PK", "ps-PK", "Pashto (Pakistan)")); 
 
         });
 
@@ -350,7 +436,7 @@ public class SahamModule : AbpModule
         {
             options.Configure(configurationContext =>
             {
-                configurationContext.UseNpgsql();
+                configurationContext.UseNpgsql(npgsql => npgsql.UseNetTopologySuite());
             });
         });
         
@@ -402,5 +488,10 @@ public class SahamModule : AbpModule
         app.UseAuditing();
         app.UseAbpSerilogEnrichers();
         app.UseConfiguredEndpoints();
+    }
+
+    public override async Task OnPostApplicationInitializationAsync(ApplicationInitializationContext context)
+    {
+        await context.AddBackgroundWorkerAsync<HousekeepingWorker>();
     }
 }

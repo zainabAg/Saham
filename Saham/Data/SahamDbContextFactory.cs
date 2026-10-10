@@ -14,7 +14,7 @@ public class SahamDbContextFactory : IDesignTimeDbContextFactory<SahamDbContext>
         var configuration = BuildConfiguration();
 
         var builder = new DbContextOptionsBuilder<SahamDbContext>()
-            .UseNpgsql(configuration.GetConnectionString("Default"));
+            .UseNpgsql(configuration.GetConnectionString("Default"), o => o.UseNetTopologySuite());
 
         return new SahamDbContext(builder.Options);
     }

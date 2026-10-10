@@ -8,6 +8,7 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.OpenIddict.Applications;
 using Volo.Abp.PermissionManagement;
 using Volo.Abp.Uow;
+using Saham.Identity;
 
 namespace Saham.Data;
 
@@ -92,12 +93,16 @@ public class OpenIddictDataSeedContributor : IDataSeedContributor, ITransientDep
                     OpenIddictConstants.GrantTypes.ClientCredentials,
                     OpenIddictConstants.GrantTypes.RefreshToken,
                     "LinkLogin",
-                    "Impersonation"
+                    "Impersonation",
+                    PhoneOtpTokenExtensionGrant.ExtensionGrantName
                 },
                 scopes: commonScopes,
                 redirectUris: new List<string> { webClientRootUrl },
                 postLogoutRedirectUris: new List<string> { webClientRootUrl }
             );
+
+            // The client may already exist from an earlier seed: make sure it can use phone login.
+            await EnsureGrantTypeAsync(consoleAndAngularClientId!, PhoneOtpTokenExtensionGrant.ExtensionGrantName);
         }
 
         // Swagger Client
@@ -121,6 +126,26 @@ public class OpenIddictDataSeedContributor : IDataSeedContributor, ITransientDep
                 redirectUris: new List<string> { $"{swaggerRootUrl}/swagger/oauth2-redirect.html" }
             );
         }
+    }
+
+    private async Task EnsureGrantTypeAsync(string clientId, string grantType)
+    {
+        var application = await _applicationManager.FindByClientIdAsync(clientId);
+        if (application == null)
+        {
+            return;
+        }
+
+        var permission = OpenIddictConstants.Permissions.Prefixes.GrantType + grantType;
+        if (await _applicationManager.HasPermissionAsync(application, permission))
+        {
+            return;
+        }
+
+        var descriptor = new AbpApplicationDescriptor();
+        await _applicationManager.PopulateAsync(descriptor, application);
+        descriptor.Permissions.Add(permission);
+        await _applicationManager.UpdateAsync(application, descriptor);
     }
 
     private async Task CreateApplicationAsync(
