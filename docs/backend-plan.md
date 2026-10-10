@@ -270,13 +270,15 @@ amount_due = T + debt_collected − credit_applied
 - [x] `OrdersHub` (SignalR) + `OrderRealtimeNotifier`: التابلت والزبون والمتابعة يُبلَّغون بعد الالتزام فقط.
 - [ ] «سُلّم للسائق» من الكاشير ← المرحلة 6 (يحتاج سائقاً مسنداً). حوادث «المطعم لم يرد خلال 2 د» ← المرحلة 8.
 
-### المرحلة 5 — السائق والتوزيع (يوم 3–4)
-- [ ] `Driver` + `DriverDocument` (BlobStoring) + `DriverProfileAppService` (تسجيل، رفع وثائق، `SetAvailability`).
-- [ ] `DriverReviewAppService`: العمليات تقبل/ترفض الوثائق، **المالك وحده** يوافق نهائياً (SOD-07).
-- [ ] `DriverLocationAppService.PostAsync` (دفعات مواقع) → `LastLocation`.
-- [ ] `DispatchManager` + `DeliveryOffer` + `DeliveryAssignment` + `OfferExpiryWorker` + `DriverHub`.
-- [ ] `DriverOfferAppService`: `GetCurrent`, `Accept`, `Decline` (العرض يعرض أجره والباقي المطلوب للفكة).
-- [ ] `OpsOrderAppService.AssignManually` + `Incident(NO_DRIVER)`.
+### المرحلة 5 — السائق والتوزيع (يوم 3–4) ✅
+- [x] `Driver` + `DriverDocument` (حاوية Blob خاصة) + `DriverProfileAppService` (تسجيل، رفع الوثائق، متاح/غير متاح، لا «غير متاح» وبيده طلب).
+- [x] `DriverReviewAppService`: العمليات تفتح الوثائق (POST مُدقق) وتقبل/ترفض بسبب، **المالك وحده** يوافق/يرفض/يوقف (SOD-07).
+- [x] `DriverLocationAppService.PostAsync` (دفعات + طابور دون اتصال) → `LastLocation`.
+- [x] `DispatchManager` + `DeliveryOffer` + `DeliveryAssignment` + `DispatchWorker` (كل 3 ث): أقرب سائق مؤهل بـ PostGIS، عرض 30 ث، رفض/انتهاء → التالي، قبول ذري، وقيود قاعدة البيانات (عرض معلق واحد، إسناد نشط واحد، ≤ 2 طلب للسائق).
+- [x] `DriverOfferAppService`: `GetCurrent` (الأجر، المبلغ المطلوب، الباقي، عدّاد بتوقيت الخادم)، `Accept`, `Decline`, `GetTasks`.
+- [x] `OpsOrderAppService.AssignDriver/ReleaseDriver` (الطلب الثاني يدوياً بأجر 1,000، إعادة الإسناد)، وإلغاء الطلب يحرر السائق في نفس المعاملة، والحجز يلغي العروض المعلقة.
+- [x] `Incident` + `IncidentManager` + `IncidentAppService`: `NO_DRIVER` بعد 5 د دون إلغاء آلي، ويُغلق تلقائياً عند الإسناد.
+- [x] إشعارات السائق الفورية (`driverEvent`) + 3 سائقين تجريبيين.
 
 ### المرحلة 6 — الاستلام والتسليم (يوم 4)
 - [ ] `DriverTaskAppService`: `ArrivedAtRestaurant` (ضمن 200 م)، `PickUp`, `ArrivedAtCustomer`, `Deliver(otp)`, `ReportFailure`, `ReportChangeShortfall`.

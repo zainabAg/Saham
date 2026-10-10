@@ -121,6 +121,9 @@ public class Order : AuditedAggregateRoot<Guid>
 
     public DateTime? ItemDecisionDeadlineAt { get; private set; }
 
+    /* When the current search for a driver began (NO_DRIVER after N minutes, BR-032). */
+    public DateTime? DispatchStartedAt { get; private set; }
+
     // Cancellation
     public CancelReason? CancelReason { get; private set; }
 
@@ -347,6 +350,51 @@ public class Order : AuditedAggregateRoot<Guid>
         }
 
         Cancel(Orders.CancelReason.RestaurantCancelled, note, ActorType.Restaurant, by, now, newId);
+    }
+
+    // ---------------------------------------------------------------- dispatch (driven by DispatchManager)
+
+    /* Accepted or ready, not on hold: the dispatch engine may look for a driver (UC-16). */
+    public bool CanBeDispatched => (Status is OrderStatus.Accepted or OrderStatus.Ready) && HoldReason == null;
+
+    /* BR-025: start when "ready" or within N minutes of the estimated ready time. */
+    public bool ShouldStartDispatch(DateTime now, int minutesBeforeReady) =>
+        CanBeDispatched &&
+        (DispatchStatus is DispatchStatus.NotStarted or DispatchStatus.Searching) &&
+        (Status == OrderStatus.Ready || (EstimatedReadyAt.HasValue && EstimatedReadyAt.Value <= now.AddMinutes(minutesBeforeReady)));
+
+    internal void StartDispatch(DateTime now)
+    {
+        if (DispatchStatus == DispatchStatus.NotStarted)
+        {
+            DispatchStatus = DispatchStatus.Searching;
+            DispatchStartedAt = now;
+        }
+    }
+
+    /* A driver accepted an offer, or ops assigned one by hand (INV-02: at most one active). */
+    internal void MarkAssigned(Guid driverId, long driverPay, ActorType actorType, Guid? by, DateTime now, Func<Guid> newId)
+    {
+        if (Status is not (OrderStatus.Placed or OrderStatus.Accepted or OrderStatus.Ready) || HoldReason != null)
+        {
+            throw new BusinessException(SahamErrorCodes.OrderNotDispatchable).WithData("status", Status.ToString());
+        }
+
+        DispatchStatus = DispatchStatus.Assigned;
+        DriverPayAmount = driverPay;
+        AddHistory(newId, OrderEventType.Assigned, Status, Status, actorType, by, driverId.ToString(), now);
+    }
+
+    /* BR-033: the assignment was released before pickup; dispatch starts again. */
+    internal void MarkAssignmentReleased(string reason, ActorType actorType, Guid? by, DateTime now, Func<Guid> newId)
+    {
+        if (DispatchStatus == DispatchStatus.Assigned)
+        {
+            DispatchStatus = DispatchStatus.NotStarted;
+            DispatchStartedAt = null;
+        }
+
+        AddHistory(newId, OrderEventType.Released, Status, Status, actorType, by, reason, now);
     }
 
     // ---------------------------------------------------------------- customer / ops / system

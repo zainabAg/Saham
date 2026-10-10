@@ -67,4 +67,25 @@ public static class SahamErrorCodes
     public const string OrderOnHold = Prefix + "OrderOnHold";
     public const string NoItemDecisionPending = Prefix + "NoItemDecisionPending";
     public const string OrderItemNotFound = Prefix + "OrderItemNotFound";
+
+    // Drivers & dispatch
+    public const string ReasonRequired = Prefix + "ReasonRequired";
+    public const string NotADriver = Prefix + "NotADriver";
+    public const string DriverAlreadyRegistered = Prefix + "DriverAlreadyRegistered";
+    public const string DriverNotApproved = Prefix + "DriverNotApproved";
+    public const string DriverHasActiveOrders = Prefix + "DriverHasActiveOrders";
+    public const string DriverNotAvailable = Prefix + "DriverNotAvailable";
+    public const string DriverCashBlocked = Prefix + "DriverCashBlocked";
+    public const string DriverAtCapacity = Prefix + "DriverAtCapacity";
+    public const string DriverDocumentsIncomplete = Prefix + "DriverDocumentsIncomplete";
+    public const string DocumentInvalidType = Prefix + "DocumentInvalidType";
+    public const string DocumentTooLarge = Prefix + "DocumentTooLarge";
+    public const string DocumentAlreadyAccepted = Prefix + "DocumentAlreadyAccepted";
+    public const string InvalidDriverReviewState = Prefix + "InvalidDriverReviewState";
+    public const string OfferExpired = Prefix + "OfferExpired";
+    public const string OfferNotPending = Prefix + "OfferNotPending";
+    public const string OrderAlreadyAssigned = Prefix + "OrderAlreadyAssigned";
+    public const string OrderNotDispatchable = Prefix + "OrderNotDispatchable";
+    public const string NoActiveAssignment = Prefix + "NoActiveAssignment";
+    public const string AssignmentAlreadyPickedUp = Prefix + "AssignmentAlreadyPickedUp";
 }

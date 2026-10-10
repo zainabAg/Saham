@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
+using Saham.Services.Dtos.Drivers;
 using Saham.Services.Dtos.Orders;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
@@ -15,4 +16,8 @@ public interface IOpsOrderAppService : IApplicationService
     Task<OpsOrderDto> CancelAsync(Guid id, CancelOrderDto input);
 
     Task<OpsOrderDto> DecideItemsAsync(Guid id, ItemDecisionDto input);
+
+    Task<OpsOrderDto> AssignDriverAsync(Guid id, AssignDriverDto input);
+
+    Task<OpsOrderDto> ReleaseDriverAsync(Guid id, ReasonDto input);
 }

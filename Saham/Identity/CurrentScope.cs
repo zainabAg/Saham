@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using Saham.Entities.Drivers;
 using Saham.Entities.Restaurants;
 using Volo.Abp;
 using Volo.Abp.Authorization;
@@ -26,18 +27,32 @@ public interface ICurrentScope
     Task<Guid> ResolveRestaurantIdAsync(Guid? requestedRestaurantId);
 
     Task<bool> IsRestaurantStaffAsync();
+
+    /* The driver profile of the current user (a driver only ever acts as himself). */
+    Task<Driver> GetDriverAsync();
 }
 
 public class CurrentScope : ICurrentScope, IScopedDependency
 {
     private readonly ICurrentUser _currentUser;
     private readonly IRepository<RestaurantStaff, Guid> _restaurantStaffRepository;
+    private readonly IRepository<Driver, Guid> _driverRepository;
     private RestaurantStaff? _restaurantStaff;
 
-    public CurrentScope(ICurrentUser currentUser, IRepository<RestaurantStaff, Guid> restaurantStaffRepository)
+    public CurrentScope(
+        ICurrentUser currentUser,
+        IRepository<RestaurantStaff, Guid> restaurantStaffRepository,
+        IRepository<Driver, Guid> driverRepository)
     {
         _currentUser = currentUser;
         _restaurantStaffRepository = restaurantStaffRepository;
+        _driverRepository = driverRepository;
+    }
+
+    public async Task<Driver> GetDriverAsync()
+    {
+        return await _driverRepository.FindAsync(UserId)
+               ?? throw new AbpAuthorizationException(code: SahamErrorCodes.NotADriver);
     }
 
     public Guid UserId => _currentUser.GetId();

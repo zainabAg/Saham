@@ -15,6 +15,9 @@ using Saham.Entities.Geography;
 using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
 using Saham.Entities.Orders;
+using Saham.Entities.Dispatch;
+using Saham.Entities.Drivers;
+using Saham.Entities.Support;
 using Saham.Entities.Pricing;
 using Saham.Entities.Restaurants;
 using Saham.Infrastructure.Idempotency;
@@ -48,6 +51,16 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
     public DbSet<OrderItem> OrderItems { get; set; }
     public DbSet<OrderStatusHistory> OrderStatusHistory { get; set; }
     public DbSet<OrderModification> OrderModifications { get; set; }
+
+    // M06 Dispatch & M07 Driver Ops
+    public DbSet<Driver> Drivers { get; set; }
+    public DbSet<DriverDocument> DriverDocuments { get; set; }
+    public DbSet<DriverLocation> DriverLocations { get; set; }
+    public DbSet<DeliveryOffer> DeliveryOffers { get; set; }
+    public DbSet<DeliveryAssignment> DeliveryAssignments { get; set; }
+
+    // M11 Support & Incidents
+    public DbSet<Incident> Incidents { get; set; }
 
     // M10 Notifications
     public DbSet<SmsLog> SmsLogs { get; set; }
@@ -90,6 +103,7 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
         builder.ConfigureSahamCatalog();
         builder.ConfigureSahamPricing();
         builder.ConfigureSahamOrders();
+        builder.ConfigureSahamDriversAndDispatch();
         builder.ConfigureSahamNotifications();
         builder.ConfigureSahamInfrastructure();
     }

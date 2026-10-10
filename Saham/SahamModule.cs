@@ -60,6 +60,8 @@ using Saham.Entities.Notifications;
 using Saham.Entities.Restaurants;
 using Saham.Entities.Pricing;
 using Saham.Entities.Orders;
+using Saham.Entities.Drivers;
+using Saham.Entities.Dispatch;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Volo.Abp.AspNetCore.ExceptionHandling;
@@ -299,6 +301,28 @@ public class SahamModule : AbpModule
             options.Map(SahamErrorCodes.CashTenderedTooLow, HttpStatusCode.UnprocessableEntity);
             options.Map(SahamErrorCodes.CancelNoteRequired, HttpStatusCode.BadRequest);
             options.Map(SahamErrorCodes.OrderItemNotFound, HttpStatusCode.BadRequest);
+
+            // Drivers & dispatch: "the state changed under you" = 409, invalid input = 400
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.OfferExpired, SahamErrorCodes.OfferNotPending, SahamErrorCodes.OrderAlreadyAssigned,
+                         SahamErrorCodes.OrderNotDispatchable, SahamErrorCodes.DriverAtCapacity, SahamErrorCodes.DriverHasActiveOrders,
+                         SahamErrorCodes.DriverNotAvailable, SahamErrorCodes.DriverCashBlocked, SahamErrorCodes.NoActiveAssignment,
+                         SahamErrorCodes.AssignmentAlreadyPickedUp, SahamErrorCodes.DriverAlreadyRegistered,
+                         SahamErrorCodes.DocumentAlreadyAccepted, SahamErrorCodes.InvalidDriverReviewState,
+                         SahamErrorCodes.DriverDocumentsIncomplete
+                     })
+            {
+                options.Map(code, HttpStatusCode.Conflict);
+            }
+
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.ReasonRequired, SahamErrorCodes.DocumentInvalidType, SahamErrorCodes.DocumentTooLarge
+                     })
+            {
+                options.Map(code, HttpStatusCode.BadRequest);
+            }
         });
     }
 
@@ -326,7 +350,8 @@ public class SahamModule : AbpModule
     private void ConfigureEntityHistory()
     {
         var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord), typeof(Quote),
-            typeof(OrderStatusHistory) /* already an audit trail of its own */ };
+            typeof(OrderStatusHistory) /* already an audit trail of its own */,
+            typeof(DriverLocation), typeof(DeliveryOffer) /* high volume; offers are their own log */ };
 
         Configure<AbpAuditingOptions>(options =>
         {
@@ -594,5 +619,6 @@ public class SahamModule : AbpModule
     {
         await context.AddBackgroundWorkerAsync<HousekeepingWorker>();
         await context.AddBackgroundWorkerAsync<OrderTimeoutsWorker>();
+        await context.AddBackgroundWorkerAsync<DispatchWorker>();
     }
 }

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -80,6 +80,7 @@ public class RolesAndPermissionsDataSeedContributor : IDataSeedContributor, ITra
             P.Complaints.Handle,
             P.Compensation.Credit,
             P.Reports.Operational,
+            P.Incidents.Handle,
             P.SmsLogs.View
         },
         [SahamRoles.Accountant] = new[]
@@ -115,6 +116,7 @@ public class RolesAndPermissionsDataSeedContributor : IDataSeedContributor, ITra
             P.SystemSettings.Manage,
             P.Reports.Operational, P.Reports.Financial,
             P.Audit.View,
+            P.Incidents.Handle,
             P.SmsLogs.View
         }
     };

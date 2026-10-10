@@ -176,6 +176,27 @@
     "Saham:CancelNoteRequired": "A reason is required.",
     "Saham:OrderOnHold": "The order is waiting for the customer's decision on an unavailable item.",
     "Saham:NoItemDecisionPending": "There is no decision waiting on this order.",
-    "Saham:OrderItemNotFound": "Select items that are still in the order."
+    "Saham:OrderItemNotFound": "Select items that are still in the order.",
+    "Saham:ReasonRequired": "A reason is required.",
+    "Saham:NotADriver": "This account is not registered as a driver.",
+    "Saham:DriverAlreadyRegistered": "You are already registered as a driver.",
+    "Saham:DriverNotApproved": "Your account is not approved yet.",
+    "Saham:DriverHasActiveOrders": "You cannot go offline while you have an order.",
+    "Saham:DriverNotAvailable": "The driver is not approved or not available.",
+    "Saham:DriverCashBlocked": "The driver is blocked from cash orders until he hands over his cash.",
+    "Saham:DriverAtCapacity": "The driver already has the maximum number of orders.",
+    "Saham:DriverDocumentsIncomplete": "All three documents must be accepted before approval.",
+    "Saham:DocumentInvalidType": "Upload a JPG, PNG or PDF file.",
+    "Saham:DocumentTooLarge": "The file must not exceed {maxMb} MB.",
+    "Saham:DocumentAlreadyAccepted": "This document has already been accepted.",
+    "Saham:InvalidDriverReviewState": "This document has already been reviewed.",
+    "Saham:OfferExpired": "The offer has expired.",
+    "Saham:OfferNotPending": "This offer is no longer open.",
+    "Saham:OrderAlreadyAssigned": "The order has already been assigned to a driver.",
+    "Saham:OrderNotDispatchable": "The order cannot be assigned now.",
+    "Saham:NoActiveAssignment": "The order has no driver to release.",
+    "Saham:AssignmentAlreadyPickedUp": "The driver has already picked up the order.",
+    "Permission:Saham.Incidents": "Incidents",
+    "Permission:Saham.Incidents.Handle": "Handle incidents"
   }
 }

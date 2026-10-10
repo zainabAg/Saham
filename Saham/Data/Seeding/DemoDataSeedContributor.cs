@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Saham.Entities.Drivers;
 using Saham.Entities.Restaurants;
+using Saham.Identity;
+using Volo.Abp.Identity;
+using Volo.Abp.Timing;
 using Saham.Entities.Shared;
 using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
@@ -27,6 +31,10 @@ public class DemoDataSeedContributor : IDataSeedContributor, ITransientDependenc
     private readonly IGuidGenerator _guidGenerator;
     private readonly ReferenceDataSeedContributor _referenceDataSeeder;
     private readonly RolesAndPermissionsDataSeedContributor _rolesSeeder;
+    private readonly IRepository<Driver, Guid> _driverRepository;
+    private readonly PhoneUserManager _phoneUserManager;
+    private readonly IdentityUserManager _userManager;
+    private readonly IClock _clock;
 
     public DemoDataSeedContributor(
         IConfiguration configuration,
@@ -37,8 +45,16 @@ public class DemoDataSeedContributor : IDataSeedContributor, ITransientDependenc
         RestaurantStaffManager restaurantStaffManager,
         IGuidGenerator guidGenerator,
         ReferenceDataSeedContributor referenceDataSeeder,
-        RolesAndPermissionsDataSeedContributor rolesSeeder)
+        RolesAndPermissionsDataSeedContributor rolesSeeder,
+        IRepository<Driver, Guid> driverRepository,
+        PhoneUserManager phoneUserManager,
+        IdentityUserManager userManager,
+        IClock clock)
     {
+        _driverRepository = driverRepository;
+        _phoneUserManager = phoneUserManager;
+        _userManager = userManager;
+        _clock = clock;
         _referenceDataSeeder = referenceDataSeeder;
         _rolesSeeder = rolesSeeder;
         _configuration = configuration;
@@ -53,7 +69,7 @@ public class DemoDataSeedContributor : IDataSeedContributor, ITransientDependenc
     [UnitOfWork]
     public virtual async Task SeedAsync(DataSeedContext context)
     {
-        if (!_configuration.GetValue<bool>("Saham:SeedDemoData") || await _restaurantRepository.GetCountAsync() > 0)
+        if (!_configuration.GetValue<bool>("Saham:SeedDemoData"))
         {
             return;
         }
@@ -61,6 +77,16 @@ public class DemoDataSeedContributor : IDataSeedContributor, ITransientDependenc
         // Seeder order is not guaranteed: the city and the roles must exist first (both are idempotent).
         await _referenceDataSeeder.SeedAsync(context);
         await _rolesSeeder.SeedAsync(context);
+
+        if (await _driverRepository.GetCountAsync() == 0)
+        {
+            await SeedDriversAsync();
+        }
+
+        if (await _restaurantRepository.GetCountAsync() > 0)
+        {
+            return;
+        }
 
         var everyDay = Enum.GetValues<DayOfWeek>();
 
@@ -130,6 +156,24 @@ public class DemoDataSeedContributor : IDataSeedContributor, ITransientDependenc
             }
         });
         await _restaurantStaffManager.CreateAsync(pizza.Id, "+9647700000301", "مدير بيتزا الفرات", RestaurantStaffRole.Manager);
+    }
+
+    /* Three approved demo drivers, offline until they open the app and send a location. */
+    private async Task SeedDriversAsync()
+    {
+        var approver = await _userManager.FindByNameAsync("admin");
+        foreach (var (phone, name, plate) in new[]
+                 {
+                     ("+9647700000901", "علي السائق", "كربلاء 1101"),
+                     ("+9647700000902", "حسين السائق", "كربلاء 1102"),
+                     ("+9647700000903", "مهدي السائق", "كربلاء 1103")
+                 })
+        {
+            var user = await _phoneUserManager.CreateAsync(phone, name, new[] { SahamRoles.Driver });
+            var driver = new Driver(user.Id, ReferenceDataSeedContributor.KarbalaCityId, plate, null, 25_000);
+            driver.ApproveForSeed(approver?.Id ?? user.Id, _clock.Now);
+            await _driverRepository.InsertAsync(driver, autoSave: true);
+        }
     }
 
     private async Task<Restaurant> CreateRestaurantAsync(

@@ -107,6 +107,9 @@ public class SahamPermissionDefinitionProvider : PermissionDefinitionProvider
         AddGroup(myGroup, SahamPermissions.Audit.Default,
             SahamPermissions.Audit.View);
 
+        AddGroup(myGroup, SahamPermissions.Incidents.Default,
+            SahamPermissions.Incidents.Handle);
+
         AddGroup(myGroup, SahamPermissions.SmsLogs.Default,
             SahamPermissions.SmsLogs.View);
     }

@@ -3,6 +3,9 @@ using NetTopologySuite.Geometries;
 using Saham.Entities.Geography;
 using Saham.Entities.Notifications;
 using Saham.Entities.Pricing;
+using Saham.Entities.Drivers;
+using Saham.Entities.Support;
+using Saham.Services.Dtos.Drivers;
 using Saham.Entities.Restaurants;
 using Saham.Entities.Shared;
 using Saham.Services.Dtos.Customers;
@@ -46,6 +49,19 @@ public class SahamAutoMapperProfile : Profile
 
         // Customers
         CreateMap<CustomerAddress, AddressDto>();
+
+        // Drivers
+        CreateMap<Driver, DriverProfileDto>()
+            .Ignore(d => d.Name)
+            .Ignore(d => d.PhoneNumber)
+            .Ignore(d => d.Documents);
+        CreateMap<Driver, DriverAdminDto>()
+            .Ignore(d => d.Name)
+            .Ignore(d => d.PhoneNumber)
+            .Ignore(d => d.LastLocation)
+            .Ignore(d => d.Documents);
+        CreateMap<DriverDocument, DriverDocumentDto>();
+        CreateMap<Incident, IncidentDto>();
         /* Create your AutoMapper object mappings here */
     }
 }

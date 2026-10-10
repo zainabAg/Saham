@@ -166,6 +166,27 @@
     "Saham:CancelNoteRequired": "يجب ذكر السبب.",
     "Saham:OrderOnHold": "الطلب بانتظار قرار الزبون بخصوص مادة غير متوفرة.",
     "Saham:NoItemDecisionPending": "لا يوجد قرار معلق على هذا الطلب.",
-    "Saham:OrderItemNotFound": "اختر مواد ما زالت ضمن الطلب."
+    "Saham:OrderItemNotFound": "اختر مواد ما زالت ضمن الطلب.",
+    "Saham:ReasonRequired": "يجب ذكر السبب.",
+    "Saham:NotADriver": "هذا الحساب غير مسجل كسائق.",
+    "Saham:DriverAlreadyRegistered": "أنت مسجل كسائق مسبقاً.",
+    "Saham:DriverNotApproved": "حسابك لم تتم الموافقة عليه بعد.",
+    "Saham:DriverHasActiveOrders": "لا يمكنك أن تصبح غير متاح وبيدك طلب.",
+    "Saham:DriverNotAvailable": "السائق غير معتمد أو غير متاح.",
+    "Saham:DriverCashBlocked": "السائق موقوف عن الطلبات النقدية حتى يسلّم الكاش.",
+    "Saham:DriverAtCapacity": "السائق لديه الحد الأقصى من الطلبات.",
+    "Saham:DriverDocumentsIncomplete": "يجب قبول الوثائق الثلاث قبل الموافقة.",
+    "Saham:DocumentInvalidType": "ارفع ملف JPG أو PNG أو PDF.",
+    "Saham:DocumentTooLarge": "حجم الملف يجب ألا يتجاوز {maxMb} ميغابايت.",
+    "Saham:DocumentAlreadyAccepted": "هذه الوثيقة مقبولة مسبقاً.",
+    "Saham:InvalidDriverReviewState": "هذه الوثيقة تمت مراجعتها مسبقاً.",
+    "Saham:OfferExpired": "انتهى العرض.",
+    "Saham:OfferNotPending": "هذا العرض لم يعد متاحاً.",
+    "Saham:OrderAlreadyAssigned": "الطلب أُسند لسائق آخر.",
+    "Saham:OrderNotDispatchable": "لا يمكن إسناد الطلب الآن.",
+    "Saham:NoActiveAssignment": "لا يوجد سائق مسند لهذا الطلب.",
+    "Saham:AssignmentAlreadyPickedUp": "السائق استلم الطلب مسبقاً.",
+    "Permission:Saham.Incidents": "الحوادث",
+    "Permission:Saham.Incidents.Handle": "معالجة الحوادث"
   }
 }

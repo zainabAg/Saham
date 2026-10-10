@@ -85,6 +85,396 @@ namespace Saham.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Saham.Entities.Dispatch.DeliveryAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArrivedAtCustomerAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("ArrivedAtRestaurantAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("AssignedByType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("AssignedByUser")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Point>("DeliveryLocation")
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("DriverPayAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("GeofenceFlag")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsBatch")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("OfferId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PickedUpAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ReleaseReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime?>("ReleasedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId")
+                        .HasDatabaseName("IX_AppDeliveryAssignments_ActiveByDriver")
+                        .HasFilter("\"Status\" IN ('Assigned', 'PickedUp')");
+
+                    b.HasIndex("OfferId");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AppDeliveryAssignments_OneActivePerOrder")
+                        .HasFilter("\"Status\" IN ('Assigned', 'PickedUp')");
+
+                    b.ToTable("AppDeliveryAssignments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DeliveryAssignments_Pay", "\"DriverPayAmount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Dispatch.DeliveryOffer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<int>("DistanceToRestaurantM")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("IsBatch")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("OfferedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("RoundNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AppDeliveryOffers_OnePendingPerDriver")
+                        .HasFilter("\"Status\" = 'Pending'");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_AppDeliveryOffers_PendingExpiry")
+                        .HasFilter("\"Status\" = 'Pending'");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AppDeliveryOffers_OnePendingPerOrder")
+                        .HasFilter("\"Status\" = 'Pending'");
+
+                    b.HasIndex("OrderId", "DriverId")
+                        .IsUnique();
+
+                    b.ToTable("AppDeliveryOffers", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Drivers.Driver", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ActiveOrderCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ApprovedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Availability")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("CashBlocked")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("CashBlockedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("CityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<Guid?>("DocsReviewedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmergencyContactPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<long>("FloatAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Point>("LastLocation")
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<DateTime?>("LastLocationAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<DateTime?>("LastTaskCompletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("ReviewStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("VehiclePlate")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CityId");
+
+                    b.HasIndex("LastLocation")
+                        .HasDatabaseName("IX_AppDrivers_AvailableLocation")
+                        .HasFilter("\"Availability\" = 'Available'");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("LastLocation"), "gist");
+
+                    b.HasIndex("ReviewStatus", "Availability");
+
+                    b.ToTable("AppDrivers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Drivers_ActiveOrderCount", "\"ActiveOrderCount\" BETWEEN 0 AND 2");
+
+                            t.HasCheckConstraint("CK_Drivers_ApprovedBy", "\"ReviewStatus\" <> 'Approved' OR \"ApprovedBy\" IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_Drivers_AvailableOnlyIfApproved", "\"Availability\" = 'Offline' OR \"ReviewStatus\" = 'Approved'");
+
+                            t.HasCheckConstraint("CK_Drivers_FloatAmount", "\"FloatAmount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Drivers.DriverDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BlobName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("DocType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId", "DocType")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AppDriverDocuments_OneLivePerType")
+                        .HasFilter("\"Status\" <> 'Rejected'");
+
+                    b.ToTable("AppDriverDocuments", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Drivers.DriverLocation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<double?>("AccuracyM")
+                        .HasColumnType("double precision");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Point>("Location")
+                        .IsRequired()
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedAt");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ReceivedAt"), "brin");
+
+                    b.HasIndex("DriverId", "RecordedAt");
+
+                    b.ToTable("AppDriverLocations", (string)null);
+                });
+
             modelBuilder.Entity("Saham.Entities.Geography.City", b =>
                 {
                     b.Property<Guid>("Id")
@@ -436,6 +826,9 @@ namespace Saham.Migrations
 
                     b.Property<long>("DiscountAmount")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("DispatchStartedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("DispatchStatus")
                         .IsRequired()
@@ -1282,6 +1675,85 @@ namespace Saham.Migrations
                     b.HasIndex("RestaurantId", "Role");
 
                     b.ToTable("AppRestaurantStaff", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Support.Incident", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssignedTo")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("DedupeKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid?>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("IncidentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("OpenedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("RestaurantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DedupeKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AppIncidents_OneOpenPerKey")
+                        .HasFilter("\"Status\" <> 'Resolved'");
+
+                    b.HasIndex("Status", "OpenedAt");
+
+                    b.ToTable("AppIncidents", (string)null);
                 });
 
             modelBuilder.Entity("Saham.Infrastructure.Idempotency.IdempotencyRecord", b =>
@@ -3074,6 +3546,65 @@ namespace Saham.Migrations
                         .IsUnique();
 
                     b.ToTable("AbpSettingDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Dispatch.DeliveryAssignment", b =>
+                {
+                    b.HasOne("Saham.Entities.Drivers.Driver", null)
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Dispatch.DeliveryOffer", null)
+                        .WithMany()
+                        .HasForeignKey("OfferId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Dispatch.DeliveryOffer", b =>
+                {
+                    b.HasOne("Saham.Entities.Drivers.Driver", null)
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Drivers.Driver", b =>
+                {
+                    b.HasOne("Saham.Entities.Geography.City", null)
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Volo.Abp.Identity.IdentityUser", null)
+                        .WithOne()
+                        .HasForeignKey("Saham.Entities.Drivers.Driver", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Drivers.DriverDocument", b =>
+                {
+                    b.HasOne("Saham.Entities.Drivers.Driver", null)
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Saham.Entities.Geography.City", b =>

@@ -1,13 +1,17 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Saham.Entities.Dispatch;
 using Saham.Entities.Orders;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Saham.Permissions;
+using Saham.Services.Dtos.Drivers;
 using Saham.Services.Dtos.Orders;
 using Saham.Services.Orders;
+using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Authorization;
 using Volo.Abp.Domain.Repositories;
@@ -24,12 +28,18 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
     private readonly IRepository<Order, Guid> _orderRepository;
     private readonly ICurrentScope _currentScope;
     private readonly OrderDtoMapper _mapper;
+    private readonly DispatchManager _dispatchManager;
 
-    public OpsOrderAppService(IRepository<Order, Guid> orderRepository, ICurrentScope currentScope, OrderDtoMapper mapper)
+    public OpsOrderAppService(
+        IRepository<Order, Guid> orderRepository,
+        ICurrentScope currentScope,
+        OrderDtoMapper mapper,
+        DispatchManager dispatchManager)
     {
         _orderRepository = orderRepository;
         _currentScope = currentScope;
         _mapper = mapper;
+        _dispatchManager = dispatchManager;
     }
 
     public async Task<PagedResultDto<OpsOrderDto>> GetListAsync(GetOpsOrdersInput input)
@@ -82,6 +92,41 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
 
         await _orderRepository.UpdateAsync(order);
         return await MapAsync(order);
+    }
+
+    /* dispatch.manual_assign ✱: give the order to a chosen driver (also a second order on the way,
+     * BR-031), replacing a driver who has not picked it up yet. */
+    [Idempotent]
+    [Authorize(SahamPermissions.Dispatch.ManualAssign)]
+    public async Task<OpsOrderDto> AssignDriverAsync(Guid id, AssignDriverDto input)
+    {
+        var order = await GetWithHistoryAsync(id);
+        await _dispatchManager.AssignManuallyAsync(order, input.DriverId, input.Reason, CurrentUser.GetId());
+        await SaveOrConflictAsync();
+        return await MapAsync(order);
+    }
+
+    /* Take the order away from its driver before pickup; dispatch starts again without him (BR-033). */
+    [Authorize(SahamPermissions.Dispatch.ManualAssign)]
+    public async Task<OpsOrderDto> ReleaseDriverAsync(Guid id, ReasonDto input)
+    {
+        var order = await GetWithHistoryAsync(id);
+        await _dispatchManager.ReleaseActiveAsync(order, input.Reason, ActorType.Staff, CurrentUser.GetId());
+        await _orderRepository.UpdateAsync(order);
+        return await MapAsync(order);
+    }
+
+    /* The unique "one active assignment per order" index is the last word in a race (EX-06). */
+    private async Task SaveOrConflictAsync()
+    {
+        try
+        {
+            await CurrentUnitOfWork!.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            throw new BusinessException(SahamErrorCodes.OrderAlreadyAssigned);
+        }
     }
 
     /* Customers and drivers hold order.view for their own orders only, restaurant staff use

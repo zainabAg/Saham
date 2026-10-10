@@ -162,6 +162,12 @@ public static class SahamPermissions
         public const string View = Default + ".View";
     }
 
+    public static class Incidents
+    {
+        public const string Default = GroupName + ".Incidents";
+        public const string Handle = Default + ".Handle";
+    }
+
     public static class SmsLogs
     {
         public const string Default = GroupName + ".SmsLogs";
