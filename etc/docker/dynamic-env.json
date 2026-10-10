@@ -1,0 +1,21 @@
+{
+  "production": true,
+  "application": {
+    "baseUrl":"http://localhost:4200",
+    "name": "Saham",
+    "logoUrl": ""
+  },
+  "oAuthConfig": {
+    "issuer": "https://localhost:44343",
+    "redirectUri": "https://localhost:44343",
+    "clientId": "Saham_App",
+    "responseType": "code",
+    "scope": "offline_access openid profile email phone Saham"
+  },
+  "apis": {
+    "default": {
+      "url": "https://localhost:44343",
+      "rootNamespace": "Saham"
+    }
+  }
+}

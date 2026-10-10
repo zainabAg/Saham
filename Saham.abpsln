@@ -1,0 +1,46 @@
+{
+  "id": "65e37f66-1a67-4ffc-a6f7-0908f9ad5891",
+  "template": "app-nolayers",
+  "versions": {
+    "AbpFramework": "9.2.0",
+    "AbpStudio": "1.0.1",
+    "TargetDotnetFramework": "net9.0"
+  },
+  "modules": {
+    "Saham": {
+      "path": "Saham.abpmdl"
+    }
+  },
+  "runProfiles": {
+    "Default": {
+      "path": "etc/run-profiles/Default.abprun.json"
+    }
+  },
+  "options": {
+    "httpRequests": {
+      "ignoredUrls": [
+      
+      ]
+    }
+  },
+  "creatingStudioConfiguration": {
+    "template": "app-nolayers",
+    "createdAbpStudioVersion": "1.0.1",
+    "multiTenancy": "false",
+    "runInstallLibs": "true",
+    "useLocalReferences": "false",
+    "uiFramework": "no-ui",
+    "databaseProvider": "ef",
+    "runDbMigrator": "true",
+    "databaseManagementSystem": "postgresql",
+    "createInitialMigration": "true",
+    "theme": "basic",
+    "themeStyle": "",
+    "themeMenuPlacement": "",
+    "publicWebsite": "",
+    "socialLogin": "false",
+    "selectedLanguages": ["English", "العربية", "Faroese", "Pashto (Pakistan)", ],
+    "defaultLanguage": "English",
+    "createCommand": "abp new Saham -t app-nolayers --mobile  --database-provider ef --database-management-system postgresql --theme basic --no-tests --without-cms-kit --sample-crud-page --dont-run-bundling --no-multi-tenancy --no-social-logins -no-gdpr -no-openiddict-admin-ui -no-audit-logging -no-file-management -no-language-management -no-text-template-management"
+  }
+}

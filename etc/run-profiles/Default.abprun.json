@@ -1,0 +1,14 @@
+﻿{
+  "applications": {
+    "Saham": {
+      "type": "dotnet-project",
+      "launchUrl": "https://localhost:44343",
+      "healthCheckEndpoint": "/health-status",
+      "healthUiEndpoint": "/health-ui",
+      "path": "../../Saham/Saham.csproj",
+      "execution": {
+        "order": 0
+      }
+    }
+  }
+}
