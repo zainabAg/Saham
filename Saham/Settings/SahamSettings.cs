@@ -28,6 +28,7 @@ public static class SahamSettings
         public const string ScheduleMaxDays = Prefix + ".Orders.ScheduleMaxDays";
         public const string AverageSpeedKmh = Prefix + ".Orders.AverageSpeedKmh";
         public const string PickupBufferMinutes = Prefix + ".Orders.PickupBufferMinutes";
+        public const string ScheduleReleaseMarginMinutes = Prefix + ".Orders.ScheduleReleaseMarginMinutes";
     }
 
     public static class Dispatch

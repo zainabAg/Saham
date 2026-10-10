@@ -93,7 +93,7 @@
     "Permission:Saham.Audit.View": "View audit log",
     "Permission:Saham.SmsLogs": "Messages",
     "Permission:Saham.SmsLogs.View": "View SMS log",
-    "Saham:InvalidStateTransition": "This action is not allowed in the current state.",
+    "Saham:InvalidStateTransition": "This action is not allowed now (order is {from}).",
     "Saham:IdempotencyKeyRequired": "The Idempotency-Key header is required for this request.",
     "Saham:IdempotencyConflict": "This Idempotency-Key was already used with different data.",
     "Saham:RequestInProgress": "The same request is still being processed.",
@@ -167,6 +167,15 @@
     "Saham:AddressOutOfRange": "We do not deliver farther than {maxKm} km from the restaurant.",
     "Saham:InvalidScheduleTime": "Choose a time at least {minLeadMinutes} minutes ahead, within {maxDays} days, during the restaurant's hours.",
     "Saham:QuoteExpired": "Prices may have changed. Please review the order again.",
-    "Saham:QuoteAlreadyUsed": "This quote was already used for an order."
+    "Saham:QuoteAlreadyUsed": "This quote was already used for an order.",
+    "Saham:PriceChanged": "Prices or availability changed. Please review the new total: {newAmountDue} IQD.",
+    "Saham:WalletNotAvailable": "Wallet payment is not available yet. Please pay cash.",
+    "Saham:CashNotAllowed": "Cash payment is disabled on your account after two undelivered orders.",
+    "Saham:CashTenderedTooLow": "The banknote must cover the amount due ({amountDue} IQD).",
+    "Saham:CustomerCannotCancel": "The restaurant has already accepted the order. Contact support to cancel.",
+    "Saham:CancelNoteRequired": "A reason is required.",
+    "Saham:OrderOnHold": "The order is waiting for the customer's decision on an unavailable item.",
+    "Saham:NoItemDecisionPending": "There is no decision waiting on this order.",
+    "Saham:OrderItemNotFound": "Select items that are still in the order."
   }
 }

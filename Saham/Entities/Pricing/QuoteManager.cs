@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -203,12 +203,16 @@ public class QuoteManager : DomainService
             return (scheduledFor.Value, scheduledFor.Value.AddMinutes(range));
         }
 
+        var min = now.AddMinutes(restaurant.DefaultPrepMinutes + await GetTravelMinutesAsync(distanceM));
+        return (min, min.AddMinutes(range));
+    }
+
+    /* Minutes from "ready" to the customer's door: driver reaching the restaurant + the ride. */
+    public async Task<int> GetTravelMinutesAsync(int distanceM)
+    {
         var speedKmh = await _settingProvider.GetAsync<int>(SahamSettings.Orders.AverageSpeedKmh);
         var buffer = await _settingProvider.GetAsync<int>(SahamSettings.Orders.PickupBufferMinutes);
-        var travelMinutes = (int)Math.Ceiling(distanceM / 1000d / Math.Max(1, speedKmh) * 60);
-
-        var min = now.AddMinutes(restaurant.DefaultPrepMinutes + buffer + travelMinutes);
-        return (min, min.AddMinutes(range));
+        return buffer + (int)Math.Ceiling(distanceM / 1000d / Math.Max(1, speedKmh) * 60);
     }
 
     /* Same item twice in the cart = one line with the summed quantity. */

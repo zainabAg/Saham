@@ -261,13 +261,14 @@ amount_due = T + debt_collected − credit_applied
 - [x] لقطة العرض (`QuoteSnapshot` jsonb + hash) لاستخدامها عند إنشاء الطلب في المرحلة 4 (`PRICE_CHANGED`).
 - [ ] الكوبونات مؤجلة لإضافات المرحلة 9 (الحقول موجودة و K = 0).
 
-### المرحلة 4 — الطلب ودورة حياته عند المطعم (يوم 3)
-- [ ] `Order` + `OrderItem` + `OrderStatusHistory` + `OrderStateMachine` + `OrderManager`.
-- [ ] `CustomerOrderAppService.CreateAsync` (نقدي فوري؛ إلزامي Idempotency؛ تصريح الورقة `CashTendered`؛ منع الكاش للممنوع).
-- [ ] `RestaurantOrderAppService`: الطلبات الحالية، `Accept(prep 5..120)`, `Reject(reason)`, `MarkReady`, `ReportItemUnavailable`, `CancelAfterAccept(reason)`, `HandoverToDriver` (كاشير).
-- [ ] نفاد المادة (الأساسي): `HoldReason=ITEM_UNAVAILABLE` → قرار الزبون «أكمل بدونها / ألغِ» خلال 5 د → وإلا إكمال آلي + تعديل المبالغ.
-- [ ] الإلغاءات: الزبون قبل القبول، رفض المطعم، المطعم بعد القبول، العمليات، والإلغاء الآلي بعد 10 د عدم رد (`RestaurantTimeoutWorker`).
-- [ ] `RestaurantHub` (SignalR) لتنبيه الطلب الجديد.
+### المرحلة 4 — الطلب ودورة حياته عند المطعم (يوم 3) ✅
+- [x] `Order` + `OrderItem` + `OrderStatusHistory` + `OrderModification` + `OrderStateMachine` (جدول T-01..T-17 واحد) + `OrderManager`. رقم الطلب من Sequence (يبدأ 1001)، ومعادلات المبالغ CHECK في قاعدة البيانات.
+- [x] `CustomerOrderAppService.CreateAsync` من عرض السعر: Idempotency إلزامي، إعادة التحقق والتسعير و`PRICE_CHANGED` مع عرض جديد، العرض المنتهي/المستخدم، الورقة النقدية والباقي، منع الكاش. + `GetList/Get/Cancel/DecideItems`.
+- [x] `RestaurantOrderAppService`: القائمة (الجديد أولاً، بلا هاتف ولا عنوان)، `Accept(5..120)`, `Reject(سبب)`, `MarkReady`, `ReportItemsUnavailable`, `Cancel(سبب)`.
+- [x] نفاد المادة (الأساسي): حجز، «أكمل بدونها / ألغِ» خلال 5 د، وإلا إكمال آلي، مع إعادة الحساب (BR-048) وسجل التعديل.
+- [x] الإلغاءات: الزبون قبل القبول، رفض المطعم، المطعم بعد القبول، المتابعة (`OpsOrderAppService`)، والإلغاء الآلي (`OrderTimeoutsWorker`)، وإرسال المجدول للمطعم (BR-021).
+- [x] `OrdersHub` (SignalR) + `OrderRealtimeNotifier`: التابلت والزبون والمتابعة يُبلَّغون بعد الالتزام فقط.
+- [ ] «سُلّم للسائق» من الكاشير ← المرحلة 6 (يحتاج سائقاً مسنداً). حوادث «المطعم لم يرد خلال 2 د» ← المرحلة 8.
 
 ### المرحلة 5 — السائق والتوزيع (يوم 3–4)
 - [ ] `Driver` + `DriverDocument` (BlobStoring) + `DriverProfileAppService` (تسجيل، رفع وثائق، `SetAvailability`).

@@ -1,0 +1,18 @@
+using System;
+using System.Threading.Tasks;
+using Saham.Services.Dtos.Orders;
+using Volo.Abp.Application.Dtos;
+using Volo.Abp.Application.Services;
+
+namespace Saham.Services.Ops;
+
+public interface IOpsOrderAppService : IApplicationService
+{
+    Task<PagedResultDto<OpsOrderDto>> GetListAsync(GetOpsOrdersInput input);
+
+    Task<OpsOrderDto> GetAsync(Guid id);
+
+    Task<OpsOrderDto> CancelAsync(Guid id, CancelOrderDto input);
+
+    Task<OpsOrderDto> DecideItemsAsync(Guid id, ItemDecisionDto input);
+}

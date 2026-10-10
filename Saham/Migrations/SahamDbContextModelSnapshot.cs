@@ -26,6 +26,9 @@ namespace Saham.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("AppOrderNumbers")
+                .StartsAt(1001L);
+
             modelBuilder.Entity("Saham.Entities.Customers.CustomerProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -338,6 +341,401 @@ namespace Saham.Migrations
                     b.HasIndex("PhoneNumber", "CreationTime");
 
                     b.ToTable("AppSmsLogs", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.Order", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("AddressLabel")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("AmountDue")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CancelNote")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancelledByType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long?>("CashTendered")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("CommissionAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("CommissionRateBp")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("CompanyDiscount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<long>("CreditApplied")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("DebtCollected")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("DeliveryDescription")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long>("DeliveryFeeBase")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DeliveryFeeCharged")
+                        .HasColumnType("bigint");
+
+                    b.Property<Point>("DeliveryLocation")
+                        .IsRequired()
+                        .HasColumnType("geography (point, 4326)");
+
+                    b.Property<long>("DiscountAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DispatchStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("DistanceM")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("DriverPayAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("EstimatedReadyAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("EtaMaxAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("EtaMinAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<bool>("FreeDeliveryApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("HoldReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ItemDecisionDeadlineAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<long>("ItemsSubtotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<long>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("nextval('\"AppOrderNumbers\"')");
+
+                    b.Property<string>("OrderType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("PickedUpAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("PlacedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("PrepMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PricingPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("QuoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadyAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("ReadyNotMarked")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RecipientPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("ReleaseAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<long>("RestaurantDiscount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("RestaurantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("RestaurantNetAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ScheduledFor")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("TotalAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("TravelMinutes")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CityId");
+
+                    b.HasIndex("ItemDecisionDeadlineAt")
+                        .HasDatabaseName("IX_AppOrders_ItemDecision")
+                        .HasFilter("\"HoldReason\" IS NOT NULL");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("PricingPlanId");
+
+                    b.HasIndex("QuoteId")
+                        .IsUnique();
+
+                    b.HasIndex("ReleaseAt")
+                        .HasDatabaseName("IX_AppOrders_ScheduledRelease")
+                        .HasFilter("\"Status\" = 'Scheduled'");
+
+                    b.HasIndex("CustomerId", "CreationTime");
+
+                    b.HasIndex("Status", "CreationTime")
+                        .HasDatabaseName("IX_AppOrders_Live")
+                        .HasFilter("\"Status\" NOT IN ('Delivered', 'Cancelled', 'DeliveryFailed')");
+
+                    b.HasIndex("RestaurantId", "Status", "CreationTime");
+
+                    b.ToTable("AppOrders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Orders_AmountDue", "\"AmountDue\" = \"TotalAmount\" + \"DebtCollected\" - \"CreditApplied\"");
+
+                            t.HasCheckConstraint("CK_Orders_CashTendered", "\"CashTendered\" IS NULL OR \"CashTendered\" >= \"AmountDue\"");
+
+                            t.HasCheckConstraint("CK_Orders_Discount", "\"DiscountAmount\" = \"CompanyDiscount\" + \"RestaurantDiscount\" AND \"DiscountAmount\" <= \"ItemsSubtotal\"");
+
+                            t.HasCheckConstraint("CK_Orders_HoldPausesDispatch", "\"HoldReason\" IS NULL OR \"DispatchStatus\" IN ('Paused', 'NotStarted', 'Assigned')");
+
+                            t.HasCheckConstraint("CK_Orders_NonNegative", "\"ItemsSubtotal\" >= 0 AND \"CompanyDiscount\" >= 0 AND \"RestaurantDiscount\" >= 0 AND \"DeliveryFeeBase\" >= 0 AND \"DeliveryFeeCharged\" >= 0 AND \"CommissionAmount\" >= 0 AND \"RestaurantNetAmount\" >= 0 AND \"DriverPayAmount\" >= 0 AND \"DebtCollected\" >= 0 AND \"CreditApplied\" >= 0 AND \"AmountDue\" >= 0");
+
+                            t.HasCheckConstraint("CK_Orders_RestaurantNet", "\"RestaurantNetAmount\" = \"ItemsSubtotal\" - \"RestaurantDiscount\" - \"CommissionAmount\"");
+
+                            t.HasCheckConstraint("CK_Orders_Total", "\"TotalAmount\" = \"ItemsSubtotal\" - \"DiscountAmount\" + \"DeliveryFeeCharged\"");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.OrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsReportedUnavailable")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("LineTotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("MenuItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("RemovedReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("UnitPrice")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MenuItemId");
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("AppOrderItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderItems_Amounts", "\"Quantity\" > 0 AND \"UnitPrice\" > 0 AND \"LineTotal\" = \"UnitPrice\" * \"Quantity\"");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.OrderModification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("After")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("AmountDelta")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Before")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ModificationType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RequestedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestedByType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("AppOrderModifications", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.OrderStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ClientOccurredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("ToStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "OccurredAt");
+
+                    b.ToTable("AppOrderStatusHistory", (string)null);
                 });
 
             modelBuilder.Entity("Saham.Entities.Pricing.PricingPlan", b =>
@@ -2727,6 +3125,103 @@ namespace Saham.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Saham.Entities.Orders.Order", b =>
+                {
+                    b.HasOne("Saham.Entities.Geography.City", null)
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Volo.Abp.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Pricing.PricingPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PricingPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Pricing.Quote", null)
+                        .WithMany()
+                        .HasForeignKey("QuoteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Restaurants.Restaurant", null)
+                        .WithMany()
+                        .HasForeignKey("RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.OrderItem", b =>
+                {
+                    b.HasOne("Saham.Entities.Restaurants.MenuItem", null)
+                        .WithMany()
+                        .HasForeignKey("MenuItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany("Items")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Saham.Entities.Shared.I18nText", "NameSnapshot", b1 =>
+                        {
+                            b1.Property<Guid>("OrderItemId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Ar")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("En")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Fa")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Ur")
+                                .HasColumnType("text");
+
+                            b1.HasKey("OrderItemId");
+
+                            b1.ToTable("AppOrderItems");
+
+                            b1.ToJson("NameSnapshot");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OrderItemId");
+                        });
+
+                    b.Navigation("NameSnapshot")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.OrderModification", b =>
+                {
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany("Modifications")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.OrderStatusHistory", b =>
+                {
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany("History")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Saham.Entities.Pricing.PricingPlan", b =>
                 {
                     b.HasOne("Saham.Entities.Geography.City", null)
@@ -3087,6 +3582,15 @@ namespace Saham.Migrations
                     b.HasOne("Volo.Abp.OpenIddict.Authorizations.OpenIddictAuthorization", null)
                         .WithMany()
                         .HasForeignKey("AuthorizationId");
+                });
+
+            modelBuilder.Entity("Saham.Entities.Orders.Order", b =>
+                {
+                    b.Navigation("History");
+
+                    b.Navigation("Items");
+
+                    b.Navigation("Modifications");
                 });
 
             modelBuilder.Entity("Saham.Entities.Pricing.PricingPlan", b =>

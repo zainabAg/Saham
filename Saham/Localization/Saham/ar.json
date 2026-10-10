@@ -82,7 +82,7 @@
     "Permission:Saham.Audit.View": "عرض سجل التدقيق",
     "Permission:Saham.SmsLogs": "الرسائل",
     "Permission:Saham.SmsLogs.View": "عرض سجل الرسائل",
-    "Saham:InvalidStateTransition": "هذا الإجراء غير مسموح في الحالة الحالية.",
+    "Saham:InvalidStateTransition": "هذا الإجراء غير مسموح الآن (حالة الطلب: {from}).",
     "Saham:IdempotencyKeyRequired": "هذا الطلب يحتاج الترويسة Idempotency-Key.",
     "Saham:IdempotencyConflict": "مفتاح التكرار مستخدم سابقاً ببيانات مختلفة.",
     "Saham:RequestInProgress": "الطلب نفسه ما زال قيد التنفيذ.",
@@ -157,6 +157,15 @@
     "Saham:AddressOutOfRange": "لا نوصل أبعد من {maxKm} كم عن المطعم.",
     "Saham:InvalidScheduleTime": "اختر وقتاً بعد {minLeadMinutes} دقيقة على الأقل، خلال {maxDays} أيام، ضمن دوام المطعم.",
     "Saham:QuoteExpired": "قد تكون الأسعار تغيرت. راجع الطلب من جديد.",
-    "Saham:QuoteAlreadyUsed": "عرض السعر هذا استُخدم لطلب سابق."
+    "Saham:QuoteAlreadyUsed": "عرض السعر هذا استُخدم لطلب سابق.",
+    "Saham:PriceChanged": "تغيرت الأسعار أو التوفر. راجع المبلغ الجديد: {newAmountDue} دينار.",
+    "Saham:WalletNotAvailable": "الدفع بالمحفظة غير متاح حالياً. ادفع نقداً.",
+    "Saham:CashNotAllowed": "الدفع النقدي موقوف على حسابك بعد عدم استلام طلبين.",
+    "Saham:CashTenderedTooLow": "الورقة النقدية يجب أن تغطي المبلغ المطلوب ({amountDue} دينار).",
+    "Saham:CustomerCannotCancel": "المطعم قبل الطلب. تواصل مع الدعم للإلغاء.",
+    "Saham:CancelNoteRequired": "يجب ذكر السبب.",
+    "Saham:OrderOnHold": "الطلب بانتظار قرار الزبون بخصوص مادة غير متوفرة.",
+    "Saham:NoItemDecisionPending": "لا يوجد قرار معلق على هذا الطلب.",
+    "Saham:OrderItemNotFound": "اختر مواد ما زالت ضمن الطلب."
   }
 }

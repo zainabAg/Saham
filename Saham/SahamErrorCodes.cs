@@ -56,4 +56,15 @@ public static class SahamErrorCodes
     public const string InvalidScheduleTime = Prefix + "InvalidScheduleTime";
     public const string QuoteExpired = Prefix + "QuoteExpired";
     public const string QuoteAlreadyUsed = Prefix + "QuoteAlreadyUsed";
+
+    // Orders
+    public const string PriceChanged = Prefix + "PriceChanged";
+    public const string WalletNotAvailable = Prefix + "WalletNotAvailable";
+    public const string CashNotAllowed = Prefix + "CashNotAllowed";
+    public const string CashTenderedTooLow = Prefix + "CashTenderedTooLow";
+    public const string CustomerCannotCancel = Prefix + "CustomerCannotCancel";
+    public const string CancelNoteRequired = Prefix + "CancelNoteRequired";
+    public const string OrderOnHold = Prefix + "OrderOnHold";
+    public const string NoItemDecisionPending = Prefix + "NoItemDecisionPending";
+    public const string OrderItemNotFound = Prefix + "OrderItemNotFound";
 }

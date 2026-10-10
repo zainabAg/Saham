@@ -29,6 +29,7 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Orders.ScheduleMaxDays, "3");               // DEC-02
         Add(context, SahamSettings.Orders.AverageSpeedKmh, "20");              // ETA estimate (motorbike in town)
         Add(context, SahamSettings.Orders.PickupBufferMinutes, "5");           // ETA: driver reaching the restaurant
+        Add(context, SahamSettings.Orders.ScheduleReleaseMarginMinutes, "10"); // BR-021
 
         // Dispatch
         Add(context, SahamSettings.Dispatch.OfferTimeoutSeconds, "30");        // S-08

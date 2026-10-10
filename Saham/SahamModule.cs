@@ -59,6 +59,7 @@ using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
 using Saham.Entities.Restaurants;
 using Saham.Entities.Pricing;
+using Saham.Entities.Orders;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Volo.Abp.AspNetCore.ExceptionHandling;
@@ -67,6 +68,7 @@ using Volo.Abp.Auditing;
 using Volo.Abp.BackgroundWorkers;
 using Volo.Abp.OpenIddict.ExtensionGrantTypes;
 using Volo.Abp.Sms;
+using Volo.Abp.AspNetCore.Uow;
 using NetTopologySuite.IO.Converters;
 using Volo.Abp.Json.SystemTextJson;
 using Volo.Abp.Timing;
@@ -208,6 +210,7 @@ public class SahamModule : AbpModule
         ConfigureExtensionGrants();
         ConfigureExceptionHandling();
         ConfigureIdempotency();
+        ConfigureRealtime();
         ConfigureEntityHistory();
         ConfigureClock();
         ConfigureJson();
@@ -285,6 +288,27 @@ public class SahamModule : AbpModule
             options.Map(SahamErrorCodes.PricingPlanNotEditable, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.QuoteExpired, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.QuoteAlreadyUsed, HttpStatusCode.Conflict);
+
+            // Orders
+            options.Map(SahamErrorCodes.PriceChanged, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.OrderOnHold, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.NoItemDecisionPending, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.CustomerCannotCancel, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.WalletNotAvailable, HttpStatusCode.UnprocessableEntity);
+            options.Map(SahamErrorCodes.CashNotAllowed, HttpStatusCode.UnprocessableEntity);
+            options.Map(SahamErrorCodes.CashTenderedTooLow, HttpStatusCode.UnprocessableEntity);
+            options.Map(SahamErrorCodes.CancelNoteRequired, HttpStatusCode.BadRequest);
+            options.Map(SahamErrorCodes.OrderItemNotFound, HttpStatusCode.BadRequest);
+        });
+    }
+
+    /* A SignalR connection is one long HTTP request: it must not hold a unit of work for its
+     * whole lifetime (the hub opens short ones when it reads the database). */
+    private void ConfigureRealtime()
+    {
+        Configure<AbpAspNetCoreUnitOfWorkOptions>(options =>
+        {
+            options.IgnoredUrls.Add("/signalr-hubs");
         });
     }
 
@@ -301,7 +325,8 @@ public class SahamModule : AbpModule
      * except technical tables that hold secrets or high-volume rows. */
     private void ConfigureEntityHistory()
     {
-        var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord), typeof(Quote) };
+        var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord), typeof(Quote),
+            typeof(OrderStatusHistory) /* already an audit trail of its own */ };
 
         Configure<AbpAuditingOptions>(options =>
         {
@@ -488,6 +513,10 @@ public class SahamModule : AbpModule
             {
                 entity.DefaultWithDetailsFunc = query => query.Include(p => p.Tiers);
             });
+            options.Entity<Order>(entity =>
+            {
+                entity.DefaultWithDetailsFunc = query => query.Include(o => o.Items);
+            });
         });
 
         Configure<AbpDbContextOptions>(options =>
@@ -524,6 +553,19 @@ public class SahamModule : AbpModule
         app.UseAbpStudioLink();
         app.UseAbpSecurityHeaders();
         app.UseCors();
+        // SignalR over WebSockets cannot send headers: accept ?access_token= on hub URLs only.
+        app.Use(async (httpContext, next) =>
+        {
+            var request = httpContext.Request;
+            if (request.Path.StartsWithSegments("/signalr-hubs") &&
+                !request.Headers.ContainsKey("Authorization") &&
+                request.Query.TryGetValue("access_token", out var token) && !string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = "Bearer " + token;
+            }
+
+            await next();
+        });
         app.UseAuthentication();
         app.UseAbpOpenIddictValidation();
 
@@ -551,5 +593,6 @@ public class SahamModule : AbpModule
     public override async Task OnPostApplicationInitializationAsync(ApplicationInitializationContext context)
     {
         await context.AddBackgroundWorkerAsync<HousekeepingWorker>();
+        await context.AddBackgroundWorkerAsync<OrderTimeoutsWorker>();
     }
 }

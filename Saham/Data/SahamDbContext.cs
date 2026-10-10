@@ -14,6 +14,7 @@ using Saham.Entities.Customers;
 using Saham.Entities.Geography;
 using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
+using Saham.Entities.Orders;
 using Saham.Entities.Pricing;
 using Saham.Entities.Restaurants;
 using Saham.Infrastructure.Idempotency;
@@ -41,6 +42,12 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
     public DbSet<PricingPlan> PricingPlans { get; set; }
     public DbSet<PricingTier> PricingTiers { get; set; }
     public DbSet<Quote> Quotes { get; set; }
+
+    // M05 Orders
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
+    public DbSet<OrderStatusHistory> OrderStatusHistory { get; set; }
+    public DbSet<OrderModification> OrderModifications { get; set; }
 
     // M10 Notifications
     public DbSet<SmsLog> SmsLogs { get; set; }
@@ -82,6 +89,7 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
         builder.ConfigureSahamGeography();
         builder.ConfigureSahamCatalog();
         builder.ConfigureSahamPricing();
+        builder.ConfigureSahamOrders();
         builder.ConfigureSahamNotifications();
         builder.ConfigureSahamInfrastructure();
     }
