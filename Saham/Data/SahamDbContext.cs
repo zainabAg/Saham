@@ -18,6 +18,7 @@ using Saham.Entities.Orders;
 using Saham.Entities.Dispatch;
 using Saham.Entities.Drivers;
 using Saham.Entities.Support;
+using Saham.Entities.Ledger;
 using Saham.Entities.Pricing;
 using Saham.Entities.Restaurants;
 using Saham.Infrastructure.Idempotency;
@@ -62,6 +63,13 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
     // M11 Support & Incidents
     public DbSet<Incident> Incidents { get; set; }
 
+    // M09 Ledger & Settlements
+    public DbSet<LedgerAccount> LedgerAccounts { get; set; }
+    public DbSet<JournalEntry> JournalEntries { get; set; }
+    public DbSet<JournalLine> JournalLines { get; set; }
+    public DbSet<CashMovement> CashMovements { get; set; }
+    public DbSet<ContactAttempt> ContactAttempts { get; set; }
+
     // M10 Notifications
     public DbSet<SmsLog> SmsLogs { get; set; }
 
@@ -104,6 +112,7 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
         builder.ConfigureSahamPricing();
         builder.ConfigureSahamOrders();
         builder.ConfigureSahamDriversAndDispatch();
+        builder.ConfigureSahamLedger();
         builder.ConfigureSahamNotifications();
         builder.ConfigureSahamInfrastructure();
     }

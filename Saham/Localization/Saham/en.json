@@ -203,6 +203,11 @@
     "Saham:DeliveryCodeLocked": "Too many wrong codes. Operations will confirm the delivery.",
     "Saham:NoShowTooEarly": "Wait {minutes} minutes at the address before reporting.",
     "Saham:NoDriverLocation": "Your location is not available. Turn on location.",
-    "Sms:DeliveryCode": "Your order #{1} from {0} is on its way. Delivery code: {2}. Give it to the driver only after you receive your order."
+    "Sms:DeliveryCode": "Your order #{1} from {0} is on its way. Delivery code: {2}. Give it to the driver only after you receive your order.",
+    "Saham:UnbalancedEntry": "Internal accounting error: unbalanced entry.",
+    "Saham:InvalidCashAmount": "The amount must be greater than zero.",
+    "Saham:ChangeShortfallTooLarge": "The unpaid change cannot exceed the change owed ({max} IQD).",
+    "Saham:ContactAttemptRequired": "Record at least one unanswered call to the customer first.",
+    "Saham:FloatReturnTooLarge": "The driver does not hold that much float."
   }
 }

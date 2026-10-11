@@ -13,7 +13,9 @@ public enum IncidentType
     RestaurantCancelledAccepted = 5,
     DeliveryCodeLocked = 6,
     CustomerNotAnswering = 7,
-    DeliveredFarFromAddress = 8
+    DeliveredFarFromAddress = 8,
+    CashOverdue = 9,
+    CashCapReached = 10
 }
 
 public enum IncidentSeverity

@@ -1,8 +1,10 @@
-using System;
+﻿using System;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Localization;
+using System.Linq;
+using Saham.Entities.Customers;
 using Saham.Entities.Drivers;
 using Saham.Entities.Orders;
 using Saham.Entities.Restaurants;
@@ -40,6 +42,8 @@ public class DeliveryManager : DomainService
     private readonly IStringEncryptionService _encryption;
     private readonly ISettingProvider _settingProvider;
     private readonly IStringLocalizer<SahamResource> _localizer;
+    private readonly IRepository<ContactAttempt, Guid> _contactRepository;
+    private readonly IRepository<CustomerProfile, Guid> _customerProfileRepository;
 
     public DeliveryManager(
         IRepository<Order, Guid> orderRepository,
@@ -51,8 +55,12 @@ public class DeliveryManager : DomainService
         ISmsSender smsSender,
         IStringEncryptionService encryption,
         ISettingProvider settingProvider,
-        IStringLocalizer<SahamResource> localizer)
+        IStringLocalizer<SahamResource> localizer,
+        IRepository<ContactAttempt, Guid> contactRepository,
+        IRepository<CustomerProfile, Guid> customerProfileRepository)
     {
+        _contactRepository = contactRepository;
+        _customerProfileRepository = customerProfileRepository;
         _orderRepository = orderRepository;
         _assignmentRepository = assignmentRepository;
         _driverRepository = driverRepository;
@@ -149,7 +157,8 @@ public class DeliveryManager : DomainService
     /* The driver types the code. A wrong code is counted (not an error, so the count is saved);
      * at the limit the code locks and ops are alerted (BR-034, OTP_LOCKED). */
     public async Task<DeliveryAttemptResult> DeliverWithCodeAsync(
-        Order order, DeliveryAssignment assignment, Driver driver, string code, DateTime? clientOccurredAt)
+        Order order, DeliveryAssignment assignment, Driver driver, string code, DateTime? clientOccurredAt,
+        long changeShortfall = 0)
     {
         if (order.Status != OrderStatus.PickedUp)
         {
@@ -176,6 +185,11 @@ public class DeliveryManager : DomainService
             }
 
             return new DeliveryAttemptResult(false, locked, Math.Max(0, maxAttempts - order.OtpFailedAttempts));
+        }
+
+        if (changeShortfall > 0)
+        {
+            order.RecordChangeShortfall(changeShortfall); // EX-14: credited to the customer on posting
         }
 
         var eventTime = ResolveEventTime(clientOccurredAt, order.LastStepAt, Clock.Now);
@@ -216,6 +230,53 @@ public class DeliveryManager : DomainService
         order.RecordEvent(OrderEventType.CustomerNotAnswering, ActorType.Driver, driverId, null, now, null, GuidGenerator.Create);
     }
 
+    /* order.mark_not_received ✱ (BR-063, DEC-06): only after at least one unanswered call.
+     * The restaurant and the driver are paid in full, the cash amount becomes the customer's debt
+     * (posted by LedgerOrderEventHandler), the no-show counter grows and two no-shows disable cash
+     * (BR-065). The food stays with the driver. */
+    public async Task MarkNotReceivedAsync(Order order, Guid staffUserId, string? note)
+    {
+        if (!await _contactRepository.AnyAsync(c => c.OrderId == order.Id &&
+                (c.Outcome == ContactOutcome.NoAnswer || c.Outcome == ContactOutcome.CustomerOffline)))
+        {
+            throw new BusinessException(SahamErrorCodes.ContactAttemptRequired);
+        }
+
+        var (assignment, driver) = await GetActiveAsync(order, nameof(OrderStatus.DeliveryFailed));
+        var now = Clock.Now;
+        order.MarkDeliveryFailed(FailureReason.CustomerNoShow, note, staffUserId, now, GuidGenerator.Create);
+        await FinishFailedAsync(assignment, driver, now);
+
+        var profile = await _customerProfileRepository.FindAsync(order.CustomerId);
+        if (profile == null)
+        {
+            profile = await _customerProfileRepository.InsertAsync(new CustomerProfile(order.CustomerId));
+        }
+
+        profile.RegisterNoShow(await _settingProvider.GetAsync<int>(SahamSettings.Delivery.NoShowCashBanThreshold), now);
+        await _customerProfileRepository.UpdateAsync(profile);
+        await _incidentManager.AutoResolveAsync(IncidentType.CustomerNotAnswering, order.Id, "NOT_RECEIVED");
+    }
+
+    /* EX-02 at +45 min: the driver never arrived and cannot be reached. The customer pays nothing
+     * (no debt), the restaurant gets its net from the company (J-DRIVER-INCIDENT), no driver pay. */
+    public async Task MarkDriverIncidentAsync(Order order, Guid staffUserId, string note)
+    {
+        var (assignment, driver) = await GetActiveAsync(order, nameof(OrderStatus.DeliveryFailed));
+        var now = Clock.Now;
+        order.MarkDeliveryFailed(FailureReason.DriverIncident, note, staffUserId, now, GuidGenerator.Create);
+        await FinishFailedAsync(assignment, driver, now);
+        await _incidentManager.AutoResolveAsync(IncidentType.DriverStale, driver.Id, "DRIVER_INCIDENT");
+    }
+
+    private async Task FinishFailedAsync(DeliveryAssignment assignment, Driver driver, DateTime now)
+    {
+        assignment.MarkFailed(now);
+        driver.RemoveActiveOrder(now, completed: true);
+        await _assignmentRepository.UpdateAsync(assignment);
+        await _driverRepository.UpdateAsync(driver);
+    }
+
     public async Task<DeliveryAssignment?> FindActiveAssignmentAsync(Guid orderId)
     {
         return await _assignmentRepository.FindAsync(a =>
@@ -246,12 +307,12 @@ public class DeliveryManager : DomainService
         await _incidentManager.AutoResolveAsync(IncidentType.DriverStale, driver.Id, "DELIVERED");
     }
 
-    private async Task<(DeliveryAssignment, Driver)> GetActiveAsync(Order order)
+    private async Task<(DeliveryAssignment, Driver)> GetActiveAsync(Order order, string target = nameof(OrderStatus.Delivered))
     {
         if (order.Status != OrderStatus.PickedUp)
         {
             throw new BusinessException(SahamErrorCodes.InvalidStateTransition)
-                .WithData("from", order.Status.ToString()).WithData("to", nameof(OrderStatus.Delivered));
+                .WithData("from", order.Status.ToString()).WithData("to", target);
         }
 
         var assignment = await FindActiveAssignmentAsync(order.Id)

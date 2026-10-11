@@ -303,6 +303,10 @@ public class DeliverDto : DriverActionDto
     [Required]
     [StringLength(8)]
     public string Code { get; set; } = string.Empty;
+
+    /* EX-14: change the driver could not give back; becomes the customer's credit. */
+    [Range(0, long.MaxValue)]
+    public long ChangeShortfall { get; set; }
 }
 
 public class DeliverResultDto

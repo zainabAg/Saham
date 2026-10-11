@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using NetTopologySuite.Geometries;
 using Volo.Abp;
 using Volo.Abp.Auditing;
@@ -181,6 +181,22 @@ public class Driver : AuditedAggregateRoot<Guid>
         {
             LastTaskCompletedAt = now;
         }
+    }
+
+    /* BR-066 / BR-067: no cash orders until the cash is handed over. */
+    public void BlockCash(DriverCashBlock reason, DateTime now)
+    {
+        if (CashBlocked == null || (CashBlocked == DriverCashBlock.Cap && reason == DriverCashBlock.Overdue))
+        {
+            CashBlocked = reason;
+            CashBlockedAt = now;
+        }
+    }
+
+    public void UnblockCash()
+    {
+        CashBlocked = null;
+        CashBlockedAt = null;
     }
 
     /* Demo/seed data only: an approved driver without the review workflow. */

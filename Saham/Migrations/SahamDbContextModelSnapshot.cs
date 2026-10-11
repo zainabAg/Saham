@@ -675,6 +675,231 @@ namespace Saham.Migrations
                     b.ToTable("AppOtpChallenges", (string)null);
                 });
 
+            modelBuilder.Entity("Saham.Entities.Ledger.CashMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateOnly>("BusinessDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("ExpectedAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<Guid>("JournalEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MovementType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("ReceivedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JournalEntryId")
+                        .IsUnique();
+
+                    b.HasIndex("DriverId", "BusinessDate");
+
+                    b.ToTable("AppCashMovements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CashMovements_Amount", "\"Amount\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Ledger.JournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("BusinessDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("PostedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("ReversesEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessDate");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("ReversesEntryId")
+                        .IsUnique()
+                        .HasFilter("\"ReversesEntryId\" IS NOT NULL");
+
+                    b.HasIndex("SourceType", "SourceId");
+
+                    b.ToTable("AppJournalEntries", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Ledger.JournalLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Credit")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Debit")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SettlementId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("AccountId"), new[] { "Debit", "Credit" });
+
+                    b.HasIndex("EntryId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("AccountId", "SettlementId");
+
+                    b.ToTable("AppJournalLines", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_JournalLines_OneSided", "(\"Debit\" > 0 AND \"Credit\" = 0) OR (\"Credit\" > 0 AND \"Debit\" = 0)");
+                        });
+                });
+
+            modelBuilder.Entity("Saham.Entities.Ledger.LedgerAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccountType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PartyType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code", "PartyType", "PartyId")
+                        .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("Code", "PartyType", "PartyId"), false);
+
+                    b.ToTable("AppLedgerAccounts", (string)null);
+                });
+
             modelBuilder.Entity("Saham.Entities.Notifications.SmsLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -771,6 +996,9 @@ namespace Saham.Migrations
                         .HasColumnType("character varying(32)");
 
                     b.Property<long?>("CashTendered")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ChangeShortfall")
                         .HasColumnType("bigint");
 
                     b.Property<Guid>("CityId")
@@ -1705,6 +1933,66 @@ namespace Saham.Migrations
                     b.HasIndex("RestaurantId", "Role");
 
                     b.ToTable("AppRestaurantStaff", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Support.ContactAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssignmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<Guid>("InitiatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignmentId");
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("AppContactAttempts", (string)null);
                 });
 
             modelBuilder.Entity("Saham.Entities.Support.Incident", b =>
@@ -3686,6 +3974,49 @@ namespace Saham.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Saham.Entities.Ledger.CashMovement", b =>
+                {
+                    b.HasOne("Saham.Entities.Drivers.Driver", null)
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Ledger.JournalEntry", null)
+                        .WithOne()
+                        .HasForeignKey("Saham.Entities.Ledger.CashMovement", "JournalEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Saham.Entities.Ledger.JournalEntry", b =>
+                {
+                    b.HasOne("Saham.Entities.Ledger.JournalEntry", null)
+                        .WithMany()
+                        .HasForeignKey("ReversesEntryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Ledger.JournalLine", b =>
+                {
+                    b.HasOne("Saham.Entities.Ledger.LedgerAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Ledger.JournalEntry", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("Saham.Entities.Orders.Order", b =>
                 {
                     b.HasOne("Saham.Entities.Geography.City", null)
@@ -4003,6 +4334,20 @@ namespace Saham.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Saham.Entities.Support.ContactAttempt", b =>
+                {
+                    b.HasOne("Saham.Entities.Dispatch.DeliveryAssignment", null)
+                        .WithMany()
+                        .HasForeignKey("AssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Volo.Abp.AuditLogging.AuditLogAction", b =>
                 {
                     b.HasOne("Volo.Abp.AuditLogging.AuditLog", null)
@@ -4143,6 +4488,11 @@ namespace Saham.Migrations
                     b.HasOne("Volo.Abp.OpenIddict.Authorizations.OpenIddictAuthorization", null)
                         .WithMany()
                         .HasForeignKey("AuthorizationId");
+                });
+
+            modelBuilder.Entity("Saham.Entities.Ledger.JournalEntry", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("Saham.Entities.Orders.Order", b =>

@@ -9,6 +9,8 @@ using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Saham.Permissions;
 using Saham.Services.Dtos.Drivers;
+using Saham.Services.Dtos.Finance;
+using Saham.Entities.Support;
 using Saham.Services.Dtos.Orders;
 using Saham.Services.Orders;
 using Volo.Abp;
@@ -30,15 +32,18 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
     private readonly OrderDtoMapper _mapper;
     private readonly DispatchManager _dispatchManager;
     private readonly DeliveryManager _deliveryManager;
+    private readonly IRepository<ContactAttempt, Guid> _contactRepository;
 
     public OpsOrderAppService(
         IRepository<Order, Guid> orderRepository,
         ICurrentScope currentScope,
         OrderDtoMapper mapper,
         DispatchManager dispatchManager,
-        DeliveryManager deliveryManager)
+        DeliveryManager deliveryManager,
+        IRepository<ContactAttempt, Guid> contactRepository)
     {
         _deliveryManager = deliveryManager;
+        _contactRepository = contactRepository;
         _orderRepository = orderRepository;
         _currentScope = currentScope;
         _mapper = mapper;
@@ -127,6 +132,41 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
     {
         var order = await GetWithHistoryAsync(id);
         await _deliveryManager.ForceDeliverAsync(order, input.Reason, CurrentUser.GetId());
+
+        await _orderRepository.UpdateAsync(order);
+        return await MapAsync(order);
+    }
+
+    /* Ops record each call to the customer (no number is stored or shown to the driver, TD-03). */
+    [Authorize(SahamPermissions.Orders.MarkNotReceived)]
+    public async Task RecordContactAttemptAsync(Guid id, RecordContactAttemptDto input)
+    {
+        var order = await _orderRepository.GetAsync(id);
+        var assignment = await _deliveryManager.FindActiveAssignmentAsync(order.Id);
+        await _contactRepository.InsertAsync(new ContactAttempt(GuidGenerator.Create(), order.Id, assignment?.Id,
+            CurrentUser.GetId(), input.Channel, input.Outcome, Clock.Now, input.Note));
+    }
+
+    /* order.mark_not_received (reason recorded): customer did not answer after the driver waited (BR-063).
+     * Restaurant and driver are paid, the customer owes the cash amount (DEC-06). */
+    [Idempotent]
+    [Authorize(SahamPermissions.Orders.MarkNotReceived)]
+    public async Task<OpsOrderDto> MarkNotReceivedAsync(Guid id, MarkFailedDto input)
+    {
+        var order = await GetWithHistoryAsync(id);
+        await _deliveryManager.MarkNotReceivedAsync(order, CurrentUser.GetId(), input.Note);
+
+        await _orderRepository.UpdateAsync(order);
+        return await MapAsync(order);
+    }
+
+    /* EX-02 at +45 min: the driver never arrived; the customer is not charged, the company pays the restaurant. */
+    [Idempotent]
+    [Authorize(SahamPermissions.Orders.MarkNotReceived)]
+    public async Task<OpsOrderDto> MarkDriverIncidentAsync(Guid id, ReasonDto input)
+    {
+        var order = await GetWithHistoryAsync(id);
+        await _deliveryManager.MarkDriverIncidentAsync(order, CurrentUser.GetId(), input.Reason);
 
         await _orderRepository.UpdateAsync(order);
         return await MapAsync(order);

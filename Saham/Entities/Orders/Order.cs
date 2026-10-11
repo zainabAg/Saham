@@ -147,6 +147,9 @@ public class Order : AuditedAggregateRoot<Guid>
 
     public Guid? HandedOverBy { get; private set; }
 
+    /* EX-14: change the driver could not give back; credited to the customer's balance. */
+    public long ChangeShortfall { get; private set; }
+
     // Cancellation
     public CancelReason? CancelReason { get; private set; }
 
@@ -512,6 +515,26 @@ public class Order : AuditedAggregateRoot<Guid>
             OverrideConfirmedBy = by;
             OverrideReason = overrideReason;
         }
+    }
+
+    /* EX-14: recorded by the driver at delivery; never more than the change owed. */
+    internal void RecordChangeShortfall(long amount)
+    {
+        var changeDue = CashTendered.HasValue ? CashTendered.Value - AmountDue : 0;
+        if (PaymentMethod != PaymentMethod.Cash || amount < 0 || amount > changeDue)
+        {
+            throw new BusinessException(SahamErrorCodes.ChangeShortfallTooLarge).WithData("max", changeDue);
+        }
+
+        ChangeShortfall = amount;
+    }
+
+    /* T-17: ops decide the order could not be delivered (BR-063), with a mandatory reason code. */
+    internal void MarkDeliveryFailed(FailureReason reason, string? note, Guid by, DateTime now, Func<Guid> newId)
+    {
+        TransitionTo(OrderStatus.DeliveryFailed, ActorType.Staff, by, note.IsNullOrWhiteSpace() ? reason.ToString() : $"{reason}: {note}", now, newId);
+        FailureReason = reason;
+        DispatchStatus = DispatchStatus.Stopped;
     }
 
     // ---------------------------------------------------------------- customer / ops / system

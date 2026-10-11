@@ -95,4 +95,11 @@ public static class SahamErrorCodes
     public const string DeliveryCodeLocked = Prefix + "DeliveryCodeLocked";
     public const string NoShowTooEarly = Prefix + "NoShowTooEarly";
     public const string NoDriverLocation = Prefix + "NoDriverLocation";
+
+    // Money
+    public const string UnbalancedEntry = Prefix + "UnbalancedEntry";
+    public const string InvalidCashAmount = Prefix + "InvalidCashAmount";
+    public const string ChangeShortfallTooLarge = Prefix + "ChangeShortfallTooLarge";
+    public const string ContactAttemptRequired = Prefix + "ContactAttemptRequired";
+    public const string FloatReturnTooLarge = Prefix + "FloatReturnTooLarge";
 }

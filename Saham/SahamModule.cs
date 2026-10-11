@@ -62,6 +62,7 @@ using Saham.Entities.Pricing;
 using Saham.Entities.Orders;
 using Saham.Entities.Drivers;
 using Saham.Entities.Dispatch;
+using Saham.Entities.Ledger;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
 using Volo.Abp.AspNetCore.ExceptionHandling;
@@ -70,6 +71,7 @@ using Volo.Abp.Auditing;
 using Volo.Abp.BackgroundWorkers;
 using Volo.Abp.OpenIddict.ExtensionGrantTypes;
 using Volo.Abp.Sms;
+using Volo.Abp.Domain.Entities.Events;
 using Volo.Abp.AspNetCore.Uow;
 using NetTopologySuite.IO.Converters;
 using Volo.Abp.Json.SystemTextJson;
@@ -216,6 +218,20 @@ public class SahamModule : AbpModule
         ConfigureEntityHistory();
         ConfigureClock();
         ConfigureJson();
+        ConfigureEntityChanges();
+    }
+
+    /* ABP would otherwise "touch" (ConcurrencyStamp, LastModificationTime) an aggregate whenever a
+     * related row is inserted, e.g. every journal entry referenced by a cash movement, or every ledger
+     * account receiving a line. That breaks the immutable ledger (the trigger rejects it) and makes
+     * concurrent postings conflict on shared accounts. Aggregates here are updated explicitly. */
+    private void ConfigureEntityChanges()
+    {
+        Configure<AbpEntityChangeOptions>(options =>
+        {
+            options.UpdateAggregateRootWhenNavigationChanges = false;
+            options.PublishEntityUpdatedEventWhenNavigationChanges = false;
+        });
     }
 
     /* PostGIS points/polygons are written as GeoJSON wherever ABP serializes entities
@@ -317,6 +333,10 @@ public class SahamModule : AbpModule
             }
 
             options.Map(SahamErrorCodes.AssignmentReleased, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.ContactAttemptRequired, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.InvalidCashAmount, HttpStatusCode.BadRequest);
+            options.Map(SahamErrorCodes.ChangeShortfallTooLarge, HttpStatusCode.BadRequest);
+            options.Map(SahamErrorCodes.FloatReturnTooLarge, HttpStatusCode.BadRequest);
             options.Map(SahamErrorCodes.DeliveryCodeLocked, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.TooFarFromRestaurant, HttpStatusCode.UnprocessableEntity);
             options.Map(SahamErrorCodes.NoShowTooEarly, HttpStatusCode.UnprocessableEntity);
@@ -357,7 +377,8 @@ public class SahamModule : AbpModule
     {
         var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord), typeof(Quote),
             typeof(OrderStatusHistory) /* already an audit trail of its own */,
-            typeof(DriverLocation), typeof(DeliveryOffer) /* high volume; offers are their own log */ };
+            typeof(DriverLocation), typeof(DeliveryOffer) /* high volume; offers are their own log */,
+            typeof(JournalEntry), typeof(JournalLine), typeof(LedgerAccount) /* the ledger is immutable and is its own audit trail */ };
 
         Configure<AbpAuditingOptions>(options =>
         {
@@ -548,6 +569,10 @@ public class SahamModule : AbpModule
             {
                 entity.DefaultWithDetailsFunc = query => query.Include(o => o.Items);
             });
+            options.Entity<JournalEntry>(entity =>
+            {
+                entity.DefaultWithDetailsFunc = query => query.Include(e => e.Lines);
+            });
         });
 
         Configure<AbpDbContextOptions>(options =>
@@ -627,5 +652,6 @@ public class SahamModule : AbpModule
         await context.AddBackgroundWorkerAsync<OrderTimeoutsWorker>();
         await context.AddBackgroundWorkerAsync<DispatchWorker>();
         await context.AddBackgroundWorkerAsync<DriverStaleWorker>();
+        await context.AddBackgroundWorkerAsync<CashOverdueWorker>();
     }
 }

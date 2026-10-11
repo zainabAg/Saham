@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Saham.Entities.Dispatch;
@@ -74,7 +74,7 @@ public class DriverTaskAppService : SahamAppService, IDriverTaskAppService
     public async Task<DeliverResultDto> DeliverAsync(Guid assignmentId, DeliverDto input)
     {
         var (assignment, order, driver) = await LoadAsync(assignmentId);
-        var result = await _deliveryManager.DeliverWithCodeAsync(order, assignment, driver, input.Code, input.ClientOccurredAt);
+        var result = await _deliveryManager.DeliverWithCodeAsync(order, assignment, driver, input.Code, input.ClientOccurredAt, input.ChangeShortfall);
 
         return new DeliverResultDto
         {

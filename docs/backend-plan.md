@@ -289,13 +289,15 @@ amount_due = T + debt_collected − credit_applied
 - [x] `DriverStaleWorker`: لا موقع 5 د مع مهمة ← حادثة `DRIVER_STALE` (حرجة إن كان الطعام بيده)، تُغلق تلقائياً عند عودة الموقع.
 - [ ] «لم يُستلم» واعتمادها وآثارها المالية ← المرحلة 7 (مع الدفتر).
 
-### المرحلة 7 — المال (يوم 5) — **نقطة القرار: رحلة كاملة حتى تحديث الأرصدة**
-- [ ] `LedgerAccount`, `JournalEntry`, `JournalLine` + Triggers + `LedgerManager` + قوالب القيود.
-- [ ] معالجات الأحداث: `OrderDelivered → J-CASH-DELIVERED + J-DRIVER-PAY` إلخ.
-- [ ] `BalancesAppService`: ذمة كل سائق، رصيد كل مطعم، رصيد/دين الزبون (`/me/balance`).
-- [ ] `CashHandoverAppService` + `CashMovement` + `CashOverdueWorker` + فحص السقف.
-- [ ] «لم يُستلم»: `ContactAttempt` + `OpsOrderAppService.MarkNotReceived` + الدين + منع الكاش بعد مرتين + `LiftCashBan` للمالك.
-- [ ] ملخص السائق اليومي (`/driver/summary/today`).
+### المرحلة 7 — المال (يوم 5) ✅ — **نقطة القرار: رحلة كاملة حتى تحديث الأرصدة**
+- [x] `LedgerAccount`, `JournalEntry`, `JournalLine` + `LedgerManager`: قيد مزدوج بمفتاح فريد، الأرصدة تُحسب من الأسطر ولا تُخزن، واليوم التشغيلي ينتهي 04:00.
+- [x] Triggers في قاعدة البيانات: منع UPDATE/DELETE على القيود والأسطر، وفحص توازن كل قيد عند الالتزام (مؤجل). + `NULLS NOT DISTINCT` لحسابات الشركة.
+- [x] قوالب القيود (`OrderPostingService`): `J-CASH-DELIVERED`, `J-DRIVER-PAY`, `J-NOT-RECEIVED`, `J-DRIVER-INCIDENT`, `J-CHANGE-SHORTFALL`، تُرحّل في نفس معاملة الحالة (`LedgerOrderEventHandler`).
+- [x] `CashManager` + `CashAppService`: تسليم الكاش للمحاسب (الفرق يبقى ذمة)، عهدة الفكة، سقف 300,000 (BR-067)، و`CashOverdueWorker` الساعة 12:00 (BR-066)، والرفع الآلي عند التسليم.
+- [x] الأرصدة اللحظية: `BalancesAppService` (السائقون، المطاعم، «كل دينار في الطلب»)، `DriverSummaryAppService` (اليوم)، `RestaurantFinanceAppService`، `CustomerBalanceAppService`.
+- [x] «لم يُستلم»: `ContactAttempt` + `MarkNotReceived` (المطعم والسائق مستحقان، دين على الزبون يُضاف لطلبه التالي، مرتان = منع الكاش) + `CustomerAdminAppService.LiftCashBan` للمالك. + «حادثة سائق» (EX-02).
+- [x] `LedgerCustomerBalanceProvider` بدل الصفر: الدين والرصيد يظهران في عرض السعر تلقائياً.
+- [ ] الدفع بالمحفظة وقيوده (`J-WALLET-*`) والاسترداد ← إضافات المرحلة 9. الكشوف الرسمية ودفع أرباح الخميس ← المرحلة 9.
 
 ### المرحلة 8 — لوحة العمليات والإدارة والتدقيق (يوم 5)
 - [ ] `OpsOrderAppService.GetLive`, `GetDriversMap`، `IncidentAppService` (فتح/إقرار/حل، `DedupeKey`)، `OpsHub`.

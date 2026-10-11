@@ -112,6 +112,15 @@ public class DeliveryAssignment : CreationAuditedAggregateRoot<Guid>
         GeofenceFlag = geofenceFlag;
     }
 
+    /* "Not received" or a driver incident after pickup (T-17). */
+    internal void MarkFailed(DateTime now)
+    {
+        EnsureStatus(AssignmentStatus.PickedUp);
+        Status = AssignmentStatus.Failed;
+        DeliveredAt = null;
+        ReleasedAt = now;
+    }
+
     /* An action from the driver's offline queue that arrives after the task was taken away (SRS 10.7 §4). */
     public void EnsureActiveFor(Guid driverId)
     {

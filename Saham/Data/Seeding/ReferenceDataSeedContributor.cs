@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using Saham.Entities.Geography;
 using Saham.Entities.Pricing;
+using Saham.Entities.Ledger;
 using Saham.Entities.Shared;
 using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
@@ -25,13 +26,16 @@ public class ReferenceDataSeedContributor : IDataSeedContributor, ITransientDepe
     private readonly IRepository<PricingPlan, Guid> _planRepository;
     private readonly PricingPlanManager _planManager;
     private readonly IGuidGenerator _guidGenerator;
+    private readonly LedgerManager _ledgerManager;
 
     public ReferenceDataSeedContributor(
         IRepository<City, Guid> cityRepository,
         IRepository<PricingPlan, Guid> planRepository,
         PricingPlanManager planManager,
-        IGuidGenerator guidGenerator)
+        IGuidGenerator guidGenerator,
+        LedgerManager ledgerManager)
     {
+        _ledgerManager = ledgerManager;
         _cityRepository = cityRepository;
         _planRepository = planRepository;
         _planManager = planManager;
@@ -52,6 +56,12 @@ public class ReferenceDataSeedContributor : IDataSeedContributor, ITransientDepe
         if (!await _planRepository.AnyAsync(p => p.CityId == KarbalaCityId))
         {
             await SeedPricingPlanAsync();
+        }
+
+        // Company accounts of the chart of accounts (SRS 12.2); party accounts are created on first use.
+        foreach (var code in Enum.GetValues<LedgerAccountCode>().Where(c => LedgerAccount.PartyOf(c) == LedgerPartyType.Company))
+        {
+            await _ledgerManager.CompanyAccountAsync(code);
         }
     }
 

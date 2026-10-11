@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Saham.Services.Dtos.Drivers;
+using Saham.Services.Dtos.Finance;
 using Saham.Services.Dtos.Orders;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
@@ -22,4 +23,10 @@ public interface IOpsOrderAppService : IApplicationService
     Task<OpsOrderDto> ReleaseDriverAsync(Guid id, ReasonDto input);
 
     Task<OpsOrderDto> ForceDeliverAsync(Guid id, ReasonDto input);
+
+    Task RecordContactAttemptAsync(Guid id, RecordContactAttemptDto input);
+
+    Task<OpsOrderDto> MarkNotReceivedAsync(Guid id, MarkFailedDto input);
+
+    Task<OpsOrderDto> MarkDriverIncidentAsync(Guid id, ReasonDto input);
 }
