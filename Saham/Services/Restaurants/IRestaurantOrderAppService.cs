@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Saham.Services.Dtos.Orders;
 using Volo.Abp.Application.Dtos;
@@ -21,4 +21,6 @@ public interface IRestaurantOrderAppService : IApplicationService
     Task<ReportItemsUnavailableResultDto> ReportItemsUnavailableAsync(Guid id, ReportItemsUnavailableDto input);
 
     Task<RestaurantOrderDto> CancelAsync(Guid id, CancelOrderDto input);
+
+    Task<RestaurantOrderDto> HandoverToDriverAsync(Guid id);
 }

@@ -187,6 +187,12 @@
     "Saham:NoActiveAssignment": "لا يوجد سائق مسند لهذا الطلب.",
     "Saham:AssignmentAlreadyPickedUp": "السائق استلم الطلب مسبقاً.",
     "Permission:Saham.Incidents": "الحوادث",
-    "Permission:Saham.Incidents.Handle": "معالجة الحوادث"
+    "Permission:Saham.Incidents.Handle": "معالجة الحوادث",
+    "Saham:AssignmentReleased": "هذه المهمة لم تعد مسندة لك.",
+    "Saham:TooFarFromRestaurant": "أنت على بعد {distance} م من المطعم؛ اقترب لأقل من {radius} م.",
+    "Saham:DeliveryCodeLocked": "محاولات خاطئة كثيرة. المتابعة ستثبّت التسليم.",
+    "Saham:NoShowTooEarly": "انتظر {minutes} دقائق عند العنوان قبل الإبلاغ.",
+    "Saham:NoDriverLocation": "موقعك غير متاح. شغّل الموقع.",
+    "Sms:DeliveryCode": "طلبك رقم {1} من {0} في الطريق إليك. رمز التسليم: {2}. لا تعطِ الرمز للسائق إلا بعد استلام طلبك."
   }
 }

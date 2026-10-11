@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Saham.Entities.Dispatch;
 using Saham.Entities.Orders;
 using Saham.Identity;
 using Saham.Permissions;
@@ -28,12 +29,18 @@ public class RestaurantOrderAppService : SahamAppService, IRestaurantOrderAppSer
     private readonly IRepository<Order, Guid> _orderRepository;
     private readonly ICurrentScope _currentScope;
     private readonly OrderDtoMapper _mapper;
+    private readonly DeliveryManager _deliveryManager;
 
-    public RestaurantOrderAppService(IRepository<Order, Guid> orderRepository, ICurrentScope currentScope, OrderDtoMapper mapper)
+    public RestaurantOrderAppService(
+        IRepository<Order, Guid> orderRepository,
+        ICurrentScope currentScope,
+        OrderDtoMapper mapper,
+        DeliveryManager deliveryManager)
     {
         _orderRepository = orderRepository;
         _currentScope = currentScope;
         _mapper = mapper;
+        _deliveryManager = deliveryManager;
     }
 
     public async Task<PagedResultDto<RestaurantOrderDto>> GetListAsync(GetRestaurantOrdersInput input)
@@ -122,6 +129,17 @@ public class RestaurantOrderAppService : SahamAppService, IRestaurantOrderAppSer
     {
         var order = await GetInScopeAsync(id);
         order.CancelByRestaurant(input.Note, CurrentUser.GetId(), Clock.Now, GuidGenerator.Create);
+
+        await _orderRepository.UpdateAsync(order);
+        return await MapAsync(order);
+    }
+
+    /* BR-074: the cashier's "handed to the driver" - records the pickup if the driver has not. */
+    [Authorize(SahamPermissions.Orders.HandoverToDriver)]
+    public async Task<RestaurantOrderDto> HandoverToDriverAsync(Guid id)
+    {
+        var order = await GetInScopeAsync(id);
+        await _deliveryManager.HandoverByCashierAsync(order, CurrentUser.GetId());
 
         await _orderRepository.UpdateAsync(order);
         return await MapAsync(order);

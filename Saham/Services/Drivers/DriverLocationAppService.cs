@@ -1,8 +1,12 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Saham.Entities.Dispatch;
 using Saham.Entities.Drivers;
+using Saham.Entities.Orders;
+using Saham.Entities.Support;
+using Saham.Hubs;
 using Saham.Entities.Shared;
 using Saham.Identity;
 using Saham.Permissions;
@@ -24,15 +28,27 @@ public class DriverLocationAppService : SahamAppService, IDriverLocationAppServi
     private readonly IRepository<Driver, Guid> _driverRepository;
     private readonly IRepository<DriverLocation, long> _locationRepository;
     private readonly ICurrentScope _currentScope;
+    private readonly IRepository<DeliveryAssignment, Guid> _assignmentRepository;
+    private readonly IRepository<Order, Guid> _orderRepository;
+    private readonly IncidentManager _incidentManager;
+    private readonly CustomerTrackingNotifier _trackingNotifier;
 
     public DriverLocationAppService(
         IRepository<Driver, Guid> driverRepository,
         IRepository<DriverLocation, long> locationRepository,
-        ICurrentScope currentScope)
+        ICurrentScope currentScope,
+        IRepository<DeliveryAssignment, Guid> assignmentRepository,
+        IRepository<Order, Guid> orderRepository,
+        IncidentManager incidentManager,
+        CustomerTrackingNotifier trackingNotifier)
     {
         _driverRepository = driverRepository;
         _locationRepository = locationRepository;
         _currentScope = currentScope;
+        _assignmentRepository = assignmentRepository;
+        _orderRepository = orderRepository;
+        _incidentManager = incidentManager;
+        _trackingNotifier = trackingNotifier;
     }
 
     public async Task<PostLocationsResultDto> PostAsync(PostLocationsDto input)
@@ -56,6 +72,20 @@ public class DriverLocationAppService : SahamAppService, IDriverLocationAppServi
         var latest = points[^1];
         driver.UpdateLocation(latest.Location, latest.RecordedAt);
         await _driverRepository.UpdateAsync(driver);
+
+        if (driver.ActiveOrderCount > 0)
+        {
+            // The phone is back: close a DRIVER_STALE incident and show the position to the customers.
+            await _incidentManager.AutoResolveAsync(IncidentType.DriverStale, driver.Id, "LOCATION_RESUMED");
+
+            var orderIds = (await _assignmentRepository.GetListAsync(a => a.DriverId == driver.Id &&
+                    (a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.PickedUp)))
+                .Select(a => a.OrderId).ToList();
+            foreach (var order in await _orderRepository.GetListAsync(o => orderIds.Contains(o.Id)))
+            {
+                _trackingNotifier.Queue(order.CustomerId, order.Id, latest.Location.Y, latest.Location.X, latest.RecordedAt);
+            }
+        }
 
         return new PostLocationsResultDto { Accepted = points.Count, LastLocationAt = driver.LastLocationAt };
     }

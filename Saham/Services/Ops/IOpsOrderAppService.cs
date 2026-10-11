@@ -20,4 +20,6 @@ public interface IOpsOrderAppService : IApplicationService
     Task<OpsOrderDto> AssignDriverAsync(Guid id, AssignDriverDto input);
 
     Task<OpsOrderDto> ReleaseDriverAsync(Guid id, ReasonDto input);
+
+    Task<OpsOrderDto> ForceDeliverAsync(Guid id, ReasonDto input);
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using Saham.Entities.Drivers;
@@ -154,6 +154,14 @@ public class DriverTaskDto
 
     public OrderStatus OrderStatus { get; set; }
 
+    public Saham.Entities.Dispatch.AssignmentStatus AssignmentStatus { get; set; }
+
+    public DateTime? ArrivedAtRestaurantAt { get; set; }
+
+    public DateTime? PickedUpAt { get; set; }
+
+    public DateTime? ArrivedAtCustomerAt { get; set; }
+
     public bool IsBatch { get; set; }
 
     public long DriverPay { get; set; }
@@ -280,3 +288,32 @@ public class ResolveIncidentDto
     [StringLength(512)]
     public string Resolution { get; set; } = string.Empty;
 }
+
+// ------------------------------------------------------------------ driver task actions
+
+/* Every driver action carries the time it happened on the phone, for actions replayed from the
+ * offline queue (EX-01). Sent with an Idempotency-Key, so a replay never runs twice. */
+public class DriverActionDto
+{
+    public DateTime? ClientOccurredAt { get; set; }
+}
+
+public class DeliverDto : DriverActionDto
+{
+    [Required]
+    [StringLength(8)]
+    public string Code { get; set; } = string.Empty;
+}
+
+public class DeliverResultDto
+{
+    public bool Delivered { get; set; }
+
+    /* The code is locked after too many wrong attempts; ops take over. */
+    public bool Locked { get; set; }
+
+    public int AttemptsLeft { get; set; }
+
+    public DriverTaskDto? Task { get; set; }
+}
+

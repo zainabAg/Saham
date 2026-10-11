@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using Saham.Entities.Orders;
@@ -310,4 +310,36 @@ public class OpsOrderDto : EntityDto<Guid>
     public DateTime? ItemDecisionDeadlineAt { get; set; }
 
     public List<OrderHistoryDto> History { get; set; } = new();
+}
+
+/* The customer's tracking screen (REQ-CUS-10/11/13): the driver's position only between
+ * assignment and delivery (BR-036), and the delivery code once the order has left the restaurant. */
+public class OrderTrackingDto
+{
+    public Guid OrderId { get; set; }
+
+    public long Number { get; set; }
+
+    public OrderStatus Status { get; set; }
+
+    public OrderHoldReason? HoldReason { get; set; }
+
+    public bool DriverAssigned { get; set; }
+
+    public string? DriverFirstName { get; set; }
+
+    public Saham.Services.Dtos.Shared.LocationDto? DriverLocation { get; set; }
+
+    public DateTime? DriverLocationAt { get; set; }
+
+    /* Shown to the customer only; give it to the driver after receiving the order (EX-13). */
+    public string? DeliveryCode { get; set; }
+
+    public DateTime? PickedUpAt { get; set; }
+
+    public DateTime? DeliveredAt { get; set; }
+
+    public DateTime EtaMinAt { get; set; }
+
+    public DateTime EtaMaxAt { get; set; }
 }

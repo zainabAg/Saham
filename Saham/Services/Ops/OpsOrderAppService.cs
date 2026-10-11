@@ -29,13 +29,16 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
     private readonly ICurrentScope _currentScope;
     private readonly OrderDtoMapper _mapper;
     private readonly DispatchManager _dispatchManager;
+    private readonly DeliveryManager _deliveryManager;
 
     public OpsOrderAppService(
         IRepository<Order, Guid> orderRepository,
         ICurrentScope currentScope,
         OrderDtoMapper mapper,
-        DispatchManager dispatchManager)
+        DispatchManager dispatchManager,
+        DeliveryManager deliveryManager)
     {
+        _deliveryManager = deliveryManager;
         _orderRepository = orderRepository;
         _currentScope = currentScope;
         _mapper = mapper;
@@ -112,6 +115,19 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
     {
         var order = await GetWithHistoryAsync(id);
         await _dispatchManager.ReleaseActiveAsync(order, input.Reason, ActorType.Staff, CurrentUser.GetId());
+        await _orderRepository.UpdateAsync(order);
+        return await MapAsync(order);
+    }
+
+    /* order.force_deliver (reason required): "delivered without code" after ops reached the customer
+     * and checked (code failed, driver phone dead - EX-02). Who confirmed and why is stored on the order. */
+    [Idempotent]
+    [Authorize(SahamPermissions.Orders.ForceDeliver)]
+    public async Task<OpsOrderDto> ForceDeliverAsync(Guid id, ReasonDto input)
+    {
+        var order = await GetWithHistoryAsync(id);
+        await _deliveryManager.ForceDeliverAsync(order, input.Reason, CurrentUser.GetId());
+
         await _orderRepository.UpdateAsync(order);
         return await MapAsync(order);
     }

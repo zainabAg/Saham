@@ -197,6 +197,12 @@
     "Saham:NoActiveAssignment": "The order has no driver to release.",
     "Saham:AssignmentAlreadyPickedUp": "The driver has already picked up the order.",
     "Permission:Saham.Incidents": "Incidents",
-    "Permission:Saham.Incidents.Handle": "Handle incidents"
+    "Permission:Saham.Incidents.Handle": "Handle incidents",
+    "Saham:AssignmentReleased": "This task is no longer yours.",
+    "Saham:TooFarFromRestaurant": "You are {distance} m from the restaurant; get within {radius} m.",
+    "Saham:DeliveryCodeLocked": "Too many wrong codes. Operations will confirm the delivery.",
+    "Saham:NoShowTooEarly": "Wait {minutes} minutes at the address before reporting.",
+    "Saham:NoDriverLocation": "Your location is not available. Turn on location.",
+    "Sms:DeliveryCode": "Your order #{1} from {0} is on its way. Delivery code: {2}. Give it to the driver only after you receive your order."
   }
 }

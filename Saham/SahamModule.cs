@@ -316,6 +316,12 @@ public class SahamModule : AbpModule
                 options.Map(code, HttpStatusCode.Conflict);
             }
 
+            options.Map(SahamErrorCodes.AssignmentReleased, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.DeliveryCodeLocked, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.TooFarFromRestaurant, HttpStatusCode.UnprocessableEntity);
+            options.Map(SahamErrorCodes.NoShowTooEarly, HttpStatusCode.UnprocessableEntity);
+            options.Map(SahamErrorCodes.NoDriverLocation, HttpStatusCode.UnprocessableEntity);
+
             foreach (var code in new[]
                      {
                          SahamErrorCodes.ReasonRequired, SahamErrorCodes.DocumentInvalidType, SahamErrorCodes.DocumentTooLarge
@@ -620,5 +626,6 @@ public class SahamModule : AbpModule
         await context.AddBackgroundWorkerAsync<HousekeepingWorker>();
         await context.AddBackgroundWorkerAsync<OrderTimeoutsWorker>();
         await context.AddBackgroundWorkerAsync<DispatchWorker>();
+        await context.AddBackgroundWorkerAsync<DriverStaleWorker>();
     }
 }

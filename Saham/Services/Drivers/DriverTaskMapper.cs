@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Saham.Entities.Dispatch;
 using Saham.Entities.Orders;
@@ -58,6 +58,10 @@ public class DriverTaskMapper : ITransientDependency
             OrderId = order.Id,
             OrderNumber = order.Number,
             OrderStatus = order.Status,
+            AssignmentStatus = assignment.Status,
+            ArrivedAtRestaurantAt = assignment.ArrivedAtRestaurantAt,
+            PickedUpAt = assignment.PickedUpAt,
+            ArrivedAtCustomerAt = assignment.ArrivedAtCustomerAt,
             IsBatch = assignment.IsBatch,
             DriverPay = assignment.DriverPayAmount,
             RestaurantName = restaurant.Name.Localize(),

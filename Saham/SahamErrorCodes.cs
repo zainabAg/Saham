@@ -88,4 +88,11 @@ public static class SahamErrorCodes
     public const string OrderNotDispatchable = Prefix + "OrderNotDispatchable";
     public const string NoActiveAssignment = Prefix + "NoActiveAssignment";
     public const string AssignmentAlreadyPickedUp = Prefix + "AssignmentAlreadyPickedUp";
+
+    // Pickup & delivery
+    public const string AssignmentReleased = Prefix + "AssignmentReleased";
+    public const string TooFarFromRestaurant = Prefix + "TooFarFromRestaurant";
+    public const string DeliveryCodeLocked = Prefix + "DeliveryCodeLocked";
+    public const string NoShowTooEarly = Prefix + "NoShowTooEarly";
+    public const string NoDriverLocation = Prefix + "NoDriverLocation";
 }

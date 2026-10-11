@@ -124,6 +124,29 @@ public class Order : AuditedAggregateRoot<Guid>
     /* When the current search for a driver began (NO_DRIVER after N minutes, BR-032). */
     public DateTime? DispatchStartedAt { get; private set; }
 
+    // Delivery proof (BR-034)
+    public DeliveryProofMethod? ProofMethod { get; private set; }
+
+    /* Hash of the 4-digit delivery code: what the driver types is checked against it. */
+    public string? DeliveryOtpHash { get; private set; }
+
+    /* The same code, encrypted, so the customer's tracking screen can show it (REQ-CUS-13).
+     * Never returned to a driver or a restaurant. */
+    public string? DeliveryOtpProtected { get; private set; }
+
+    public int OtpFailedAttempts { get; private set; }
+
+    public bool OtpLocked { get; private set; }
+
+    public Guid? OverrideConfirmedBy { get; private set; }
+
+    public string? OverrideReason { get; private set; }
+
+    /* The cashier's "handed to the driver" (BR-074), a second confirmation of the pickup. */
+    public DateTime? RestaurantHandoverAt { get; private set; }
+
+    public Guid? HandedOverBy { get; private set; }
+
     // Cancellation
     public CancelReason? CancelReason { get; private set; }
 
@@ -397,6 +420,100 @@ public class Order : AuditedAggregateRoot<Guid>
         AddHistory(newId, OrderEventType.Released, Status, Status, actorType, by, reason, now);
     }
 
+    // ---------------------------------------------------------------- pickup & delivery (driven by DeliveryManager)
+
+    /* Time of the last recorded step, used to sanity-check device times from the offline queue (EX-01). */
+    public DateTime LastStepAt =>
+        new[] { CreationTime, PlacedAt, AcceptedAt, ReadyAt, PickedUpAt, DeliveredAt, CancelledAt }
+            .Where(t => t.HasValue).Max(t => t!.Value);
+
+    /* T-12 (from Accepted: "ready" was never pressed) / T-13 (from Ready), by the assigned driver
+     * or the cashier. A new delivery code is set at the same moment. */
+    internal void MarkPickedUp(ActorType actorType, Guid by, DateTime eventTime, DateTime? clientOccurredAt,
+        string otpHash, string otpProtected, Func<Guid> newId)
+    {
+        EnsureNotOnHold();
+        if (DispatchStatus != DispatchStatus.Assigned)
+        {
+            throw InvalidTransition(nameof(OrderStatus.PickedUp));
+        }
+
+        var fromAccepted = Status == OrderStatus.Accepted;
+        TransitionTo(OrderStatus.PickedUp, actorType, by, null, eventTime, newId, clientOccurredAt);
+        if (fromAccepted)
+        {
+            ReadyNotMarked = true;
+            ReadyAt = eventTime;
+        }
+
+        PickedUpAt = eventTime;
+        DeliveryOtpHash = otpHash;
+        DeliveryOtpProtected = otpProtected;
+        OtpFailedAttempts = 0;
+        OtpLocked = false;
+
+        if (actorType == ActorType.Restaurant)
+        {
+            RestaurantHandoverAt = eventTime;
+            HandedOverBy = by;
+        }
+    }
+
+    /* The cashier confirms a pickup the driver already recorded (BR-074). */
+    internal void RecordRestaurantHandover(Guid by, DateTime now, Func<Guid> newId)
+    {
+        if (Status != OrderStatus.PickedUp)
+        {
+            throw InvalidTransition("HandedOver");
+        }
+
+        if (RestaurantHandoverAt == null)
+        {
+            RestaurantHandoverAt = now;
+            HandedOverBy = by;
+            AddHistory(newId, OrderEventType.HandedOver, Status, Status, ActorType.Restaurant, by, null, now);
+        }
+    }
+
+    /* A step that is not a status change, e.g. the driver reached the restaurant (SRS 10.4 note). */
+    internal void RecordEvent(OrderEventType type, ActorType actorType, Guid? by, string? reason,
+        DateTime eventTime, DateTime? clientOccurredAt, Func<Guid> newId)
+    {
+        AddHistory(newId, type, Status, Status, actorType, by, reason, eventTime, clientOccurredAt);
+    }
+
+    /* A wrong code; after N wrong codes the code is locked and ops take over (BR-034). */
+    internal bool RegisterOtpFailure(int maxAttempts)
+    {
+        OtpFailedAttempts++;
+        if (OtpFailedAttempts >= maxAttempts)
+        {
+            OtpLocked = true;
+        }
+
+        return OtpLocked;
+    }
+
+    /* T-16: only with a proof (BR-034). Ops override always records who and why. */
+    internal void MarkDelivered(DeliveryProofMethod proof, ActorType actorType, Guid? by, string? overrideReason,
+        DateTime eventTime, DateTime? clientOccurredAt, Func<Guid> newId)
+    {
+        if (proof == DeliveryProofMethod.OpsOverride && overrideReason.IsNullOrWhiteSpace())
+        {
+            throw new BusinessException(SahamErrorCodes.ReasonRequired);
+        }
+
+        TransitionTo(OrderStatus.Delivered, actorType, by, proof == DeliveryProofMethod.OpsOverride ? overrideReason : proof.ToString(),
+            eventTime, newId, clientOccurredAt);
+        DeliveredAt = eventTime;
+        ProofMethod = proof;
+        if (proof == DeliveryProofMethod.OpsOverride)
+        {
+            OverrideConfirmedBy = by;
+            OverrideReason = overrideReason;
+        }
+    }
+
     // ---------------------------------------------------------------- customer / ops / system
 
     /* BR-045: the customer cancels for free before the restaurant accepts. */
@@ -502,12 +619,13 @@ public class Order : AuditedAggregateRoot<Guid>
         }
     }
 
-    private void TransitionTo(OrderStatus to, ActorType actorType, Guid? by, string? reason, DateTime now, Func<Guid> newId)
+    private void TransitionTo(OrderStatus to, ActorType actorType, Guid? by, string? reason, DateTime now, Func<Guid> newId,
+        DateTime? clientOccurredAt = null)
     {
         OrderStateMachine.EnsureTransition(Status, to);
         var from = Status;
         Status = to;
-        AddHistory(newId, OrderEventType.Transition, from, to, actorType, by, reason, now);
+        AddHistory(newId, OrderEventType.Transition, from, to, actorType, by, reason, now, clientOccurredAt);
     }
 
     /* Published by ABP when the change is saved; used for realtime updates (OrderRealtimeNotifier). */
@@ -517,9 +635,9 @@ public class Order : AuditedAggregateRoot<Guid>
     }
 
     private void AddHistory(Func<Guid> newId, OrderEventType type, OrderStatus? from, OrderStatus? to,
-        ActorType actorType, Guid? by, string? reason, DateTime now)
+        ActorType actorType, Guid? by, string? reason, DateTime now, DateTime? clientOccurredAt = null)
     {
-        History.Add(new OrderStatusHistory(newId(), Id, type, from, to, actorType, by, reason, now));
+        History.Add(new OrderStatusHistory(newId(), Id, type, from, to, actorType, by, reason, now, clientOccurredAt));
         RaiseChanged(type);
     }
 

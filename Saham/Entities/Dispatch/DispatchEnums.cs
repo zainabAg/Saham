@@ -1,4 +1,4 @@
-namespace Saham.Entities.Dispatch;
+﻿namespace Saham.Entities.Dispatch;
 
 public enum OfferStatus
 {
@@ -17,6 +17,13 @@ public enum AssignmentStatus
     Delivered = 2,
     Failed = 3,
     Released = 4
+}
+
+/* T-12/T-13: the assigned driver or the restaurant cashier records the pickup (BR-074). */
+public enum PickedUpByType
+{
+    Driver = 0,
+    Cashier = 1
 }
 
 public enum AssignedByType

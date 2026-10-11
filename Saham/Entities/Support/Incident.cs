@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Volo.Abp.Domain.Entities.Auditing;
 
 namespace Saham.Entities.Support;
@@ -10,7 +10,10 @@ public enum IncidentType
     RestaurantNoResponse = 2,
     OrderLate = 3,
     ItemDecisionTimeout = 4,
-    RestaurantCancelledAccepted = 5
+    RestaurantCancelledAccepted = 5,
+    DeliveryCodeLocked = 6,
+    CustomerNotAnswering = 7,
+    DeliveredFarFromAddress = 8
 }
 
 public enum IncidentSeverity

@@ -1,8 +1,11 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Saham.Entities.Dispatch;
+using Saham.Entities.Drivers;
 using Saham.Entities.Orders;
+using Saham.Services.Dtos.Shared;
 using Saham.Infrastructure.Idempotency;
 using Saham.Permissions;
 using Saham.Services.Dtos.Orders;
@@ -21,12 +24,24 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
     private readonly IRepository<Order, Guid> _orderRepository;
     private readonly OrderManager _orderManager;
     private readonly OrderDtoMapper _mapper;
+    private readonly DeliveryManager _deliveryManager;
+    private readonly IRepository<Driver, Guid> _driverRepository;
+    private readonly IRepository<Volo.Abp.Identity.IdentityUser, Guid> _userRepository;
 
-    public CustomerOrderAppService(IRepository<Order, Guid> orderRepository, OrderManager orderManager, OrderDtoMapper mapper)
+    public CustomerOrderAppService(
+        IRepository<Order, Guid> orderRepository,
+        OrderManager orderManager,
+        OrderDtoMapper mapper,
+        DeliveryManager deliveryManager,
+        IRepository<Driver, Guid> driverRepository,
+        IRepository<Volo.Abp.Identity.IdentityUser, Guid> userRepository)
     {
         _orderRepository = orderRepository;
         _orderManager = orderManager;
         _mapper = mapper;
+        _deliveryManager = deliveryManager;
+        _driverRepository = driverRepository;
+        _userRepository = userRepository;
     }
 
     /* Confirm the order from a quote. A double tap or a retry with the same
@@ -84,6 +99,50 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
     {
         var order = await GetOwnAsync(id);
         order.ResolveItemDecision(input.Decision, ActorType.Customer, CurrentUser.GetId(), Clock.Now, GuidGenerator.Create);
+
+        await _orderRepository.UpdateAsync(order);
+        return await MapAsync(order);
+    }
+
+    [Authorize(SahamPermissions.Delivery.TrackDriver)]
+    public async Task<OrderTrackingDto> GetTrackingAsync(Guid id)
+    {
+        var order = await GetOwnAsync(id);
+        var dto = new OrderTrackingDto
+        {
+            OrderId = order.Id,
+            Number = order.Number,
+            Status = order.Status,
+            HoldReason = order.HoldReason,
+            PickedUpAt = order.PickedUpAt,
+            DeliveredAt = order.DeliveredAt,
+            EtaMinAt = order.EtaMinAt,
+            EtaMaxAt = order.EtaMaxAt,
+            DeliveryCode = await AuthorizationService.IsGrantedAsync(SahamPermissions.Delivery.CodeView)
+                ? _deliveryManager.RevealCode(order)
+                : null
+        };
+
+        var assignment = await _deliveryManager.FindActiveAssignmentAsync(order.Id);
+        if (assignment != null)
+        {
+            var driver = await _driverRepository.GetAsync(assignment.DriverId);
+            var name = (await _userRepository.FindAsync(driver.Id))?.Name;
+            dto.DriverAssigned = true;
+            dto.DriverFirstName = name.IsNullOrWhiteSpace() ? null : name!.Trim().Split(' ')[0];
+            dto.DriverLocation = driver.LastLocation == null ? null : new LocationDto { Latitude = driver.LastLocation.Y, Longitude = driver.LastLocation.X };
+            dto.DriverLocationAt = driver.LastLocationAt;
+        }
+
+        return dto;
+    }
+
+    /* DER-CUS-08: "I received my order" - proof of delivery from the customer's own app. */
+    [Idempotent]
+    public async Task<CustomerOrderDto> ConfirmReceivedAsync(Guid id)
+    {
+        var order = await GetOwnAsync(id);
+        await _deliveryManager.ConfirmByCustomerAsync(order);
 
         await _orderRepository.UpdateAsync(order);
         return await MapAsync(order);

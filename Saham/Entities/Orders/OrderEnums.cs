@@ -1,4 +1,4 @@
-namespace Saham.Entities.Orders;
+﻿namespace Saham.Entities.Orders;
 
 /* orders.status — the work/preparation dimension only (SRS 10.1).
  * Dispatch, payment and refunds have their own status fields so impossible combinations
@@ -93,7 +93,9 @@ public enum OrderEventType
     PrepExtended = 6,
     ItemDecision = 7,
     ArrivedAtRestaurant = 8,
-    HandedOver = 9
+    HandedOver = 9,
+    ArrivedAtCustomer = 10,
+    CustomerNotAnswering = 11
 }
 
 public enum OrderItemStatus
@@ -108,6 +110,14 @@ public enum ItemDecision
 {
     ContinueWithout = 0,
     CancelOrder = 1
+}
+
+/* BR-034: the only three ways an order becomes Delivered. */
+public enum DeliveryProofMethod
+{
+    Otp = 0,
+    CustomerConfirm = 1,
+    OpsOverride = 2
 }
 
 public enum OrderModificationType

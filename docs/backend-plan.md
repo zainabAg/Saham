@@ -280,11 +280,14 @@ amount_due = T + debt_collected − credit_applied
 - [x] `Incident` + `IncidentManager` + `IncidentAppService`: `NO_DRIVER` بعد 5 د دون إلغاء آلي، ويُغلق تلقائياً عند الإسناد.
 - [x] إشعارات السائق الفورية (`driverEvent`) + 3 سائقين تجريبيين.
 
-### المرحلة 6 — الاستلام والتسليم (يوم 4)
-- [ ] `DriverTaskAppService`: `ArrivedAtRestaurant` (ضمن 200 م)، `PickUp`, `ArrivedAtCustomer`, `Deliver(otp)`, `ReportFailure`, `ReportChangeShortfall`.
-- [ ] OTP + `SmsLog` + `OrderTrackingHub` للزبون (حالة + موقع السائق).
-- [ ] قبول `ClientOccurredAt` بالمنطق المذكور في EX-01.
-- [ ] `OpsOrderAppService.ForceDeliver(reason)` + `DriverStaleWorker` (حادثة بعد 5 د بلا موقع).
+### المرحلة 6 — الاستلام والتسليم (يوم 4) ✅
+- [x] `DriverTaskAppService`: `ArriveAtRestaurant` (ضمن 200 م)، `PickUp`، `ArriveAtCustomer`، `Deliver(code)`، `ReportCustomerNotAnswering` (بعد 10 د انتظار ← حادثة)، `GiveUp` قبل الاستلام (BR-033). كلها بمفتاح منع التكرار.
+- [x] `DeliveryManager`: رمز 4 أرقام عند الاستلام يُرسل برسالة مع تحذير EX-13، يُخزن hash للتحقق ونسخة مشفرة لشاشة الزبون فقط؛ 5 محاولات خاطئة ← قفل وحادثة؛ مطابقة موقع التسليم (علم + حادثة منخفضة).
+- [x] الكاشير «سُلّم للسائق» (BR-074)، «استلمت طلبي» من الزبون (DER-CUS-08)، «بدون رمز» من المتابعة بسبب إلزامي (✱).
+- [x] طابور دون اتصال (EX-01): وقت الجهاز يُقبل إن كان منطقياً، والإجراء على مهمة محررة ← 409 `ASSIGNMENT_RELEASED`.
+- [x] تتبع الزبون: `GetTracking` (السائق والموقع بين الإسناد والتسليم فقط، والرمز بعد الخروج) + دفع الموقع لحظياً عبر SignalR.
+- [x] `DriverStaleWorker`: لا موقع 5 د مع مهمة ← حادثة `DRIVER_STALE` (حرجة إن كان الطعام بيده)، تُغلق تلقائياً عند عودة الموقع.
+- [ ] «لم يُستلم» واعتمادها وآثارها المالية ← المرحلة 7 (مع الدفتر).
 
 ### المرحلة 7 — المال (يوم 5) — **نقطة القرار: رحلة كاملة حتى تحديث الأرصدة**
 - [ ] `LedgerAccount`, `JournalEntry`, `JournalLine` + Triggers + `LedgerManager` + قوالب القيود.

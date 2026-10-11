@@ -154,6 +154,9 @@ namespace Saham.Migrations
                     b.Property<DateTime?>("PickedUpAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<int?>("PickedUpByType")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ReleaseReason")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
@@ -824,6 +827,12 @@ namespace Saham.Migrations
                         .IsRequired()
                         .HasColumnType("geography (point, 4326)");
 
+                    b.Property<string>("DeliveryOtpHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeliveryOtpProtected")
+                        .HasColumnType("text");
+
                     b.Property<long>("DiscountAmount")
                         .HasColumnType("bigint");
 
@@ -862,6 +871,9 @@ namespace Saham.Migrations
                     b.Property<bool>("FreeDeliveryApplied")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("HandedOverBy")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("HoldReason")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -890,6 +902,18 @@ namespace Saham.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<int>("OtpFailedAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("OtpLocked")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("OverrideConfirmedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OverrideReason")
+                        .HasColumnType("text");
+
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -906,6 +930,9 @@ namespace Saham.Migrations
 
                     b.Property<Guid>("PricingPlanId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("ProofMethod")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("QuoteId")
                         .HasColumnType("uuid");
@@ -929,6 +956,9 @@ namespace Saham.Migrations
 
                     b.Property<long>("RestaurantDiscount")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("RestaurantHandoverAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<Guid>("RestaurantId")
                         .HasColumnType("uuid");

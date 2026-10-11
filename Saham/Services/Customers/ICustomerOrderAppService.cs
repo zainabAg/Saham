@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Saham.Services.Dtos.Orders;
 using Volo.Abp.Application.Dtos;
@@ -17,4 +17,8 @@ public interface ICustomerOrderAppService : IApplicationService
     Task<CustomerOrderDto> CancelAsync(Guid id);
 
     Task<CustomerOrderDto> DecideItemsAsync(Guid id, ItemDecisionDto input);
+
+    Task<OrderTrackingDto> GetTrackingAsync(Guid id);
+
+    Task<CustomerOrderDto> ConfirmReceivedAsync(Guid id);
 }
