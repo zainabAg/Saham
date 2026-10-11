@@ -35,6 +35,7 @@ public class QuoteManager : DomainService
     private readonly PricingCalculator _calculator;
     private readonly ICustomerBalanceProvider _balanceProvider;
     private readonly ISettingProvider _settingProvider;
+    private readonly Coupons.CouponManager _couponManager;
 
     public QuoteManager(
         IRepository<Restaurant, Guid> restaurantRepository,
@@ -45,8 +46,10 @@ public class QuoteManager : DomainService
         PricingPlanManager pricingPlanManager,
         PricingCalculator calculator,
         ICustomerBalanceProvider balanceProvider,
-        ISettingProvider settingProvider)
+        ISettingProvider settingProvider,
+        Coupons.CouponManager couponManager)
     {
+        _couponManager = couponManager;
         _restaurantRepository = restaurantRepository;
         _menuItemRepository = menuItemRepository;
         _addressRepository = addressRepository;
@@ -64,7 +67,8 @@ public class QuoteManager : DomainService
         Guid addressId,
         IReadOnlyCollection<(Guid MenuItemId, int Quantity)> requestedLines,
         OrderType orderType,
-        DateTime? scheduledFor)
+        DateTime? scheduledFor,
+        string? couponCode = null)
     {
         var now = Clock.Now;
         var lines = MergeLines(requestedLines);
@@ -127,12 +131,25 @@ public class QuoteManager : DomainService
                 .WithData("missing", restaurant.MinOrderAmount - itemsSubtotal);
         }
 
+        // Coupon (BR-010/011): one per order, on the items only, funded by the company or the restaurant (BR-012).
+        QuoteCouponSnapshot? couponSnapshot = null;
+        if (!couponCode.IsNullOrWhiteSpace())
+        {
+            var coupon = await _couponManager.FindValidAsync(couponCode!, customerId, restaurantId, itemsSubtotal, now);
+            couponSnapshot = new QuoteCouponSnapshot(coupon.Id, coupon.Code, coupon.DiscountType, coupon.Value,
+                coupon.MaxDiscount, coupon.FundedBy, coupon.StackableWithFreeDelivery, coupon.DiscountFor(itemsSubtotal));
+        }
+
         // Amounts
+        var couponAmount = couponSnapshot?.Amount ?? 0;
         var breakdown = _calculator.Calculate(
             plan,
             distanceM,
             lineSnapshots.Select(l => (l.UnitPrice, l.Quantity)).ToList(),
-            restaurant.CommissionRateBp);
+            restaurant.CommissionRateBp,
+            companyDiscount: couponSnapshot?.FundedBy == Coupons.CouponFundedBy.Company ? couponAmount : 0,
+            restaurantDiscount: couponSnapshot?.FundedBy == Coupons.CouponFundedBy.Restaurant ? couponAmount : 0,
+            couponBlocksFreeDelivery: couponSnapshot is { StackableWithFreeDelivery: false });
 
         var balance = await _balanceProvider.GetBalanceAsync(customerId);
         var (debt, credit, amountDue) = _calculator.ApplyBalance(breakdown.TotalAmount, balance);
@@ -158,7 +175,8 @@ public class QuoteManager : DomainService
             amountDue,
             CashAllowed: profile is not { CashDisabled: true },
             etaMin,
-            etaMax);
+            etaMax,
+            couponSnapshot);
 
         var lifetime = await _settingProvider.GetAsync<int>(SahamSettings.Orders.QuoteLifetimeMinutes);
         return new Quote(GuidGenerator.Create(), customerId, orderType, scheduledFor, snapshot, now.AddMinutes(lifetime));

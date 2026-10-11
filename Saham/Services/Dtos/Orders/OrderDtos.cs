@@ -50,11 +50,29 @@ public class CancelOrderDto
     public string Note { get; set; } = string.Empty;
 }
 
+/* Ops cancellation: who caused it decides who pays (BR-045, BR-069). */
+public class OpsCancelOrderDto : CancelOrderDto
+{
+    public CancelCause Cause { get; set; } = CancelCause.Company;
+}
+
 public class ReportItemsUnavailableDto
 {
     [Required]
     [MinLength(1)]
     public List<Guid> OrderItemIds { get; set; } = new();
+
+    /* Optional (BR-047 b): a replacement from the menu for some of those lines, same price or less. */
+    public List<SubstituteInput> Substitutes { get; set; } = new();
+}
+
+public class SubstituteInput
+{
+    [Required]
+    public Guid OrderItemId { get; set; }
+
+    [Required]
+    public Guid MenuItemId { get; set; }
 }
 
 public class ItemDecisionDto
@@ -102,12 +120,36 @@ public class OrderLineDto : EntityDto<Guid>
     public OrderItemStatus Status { get; set; }
 
     public bool IsReportedUnavailable { get; set; }
+
+    /* A proposed substitute (Status = ProposedSubstitute) names the line it would replace. */
+    public Guid? SubstituteForItemId { get; set; }
+}
+
+/* Wallet payment of an order (UC-05): open RedirectUrl to pay before ExpiresAt. */
+public class OrderPaymentDto
+{
+    public Guid PaymentId { get; set; }
+
+    public Saham.Entities.Payments.PaymentStatus Status { get; set; }
+
+    public long Amount { get; set; }
+
+    public string? RedirectUrl { get; set; }
+
+    public DateTime ExpiresAt { get; set; }
+
+    /* Already being returned or returned to the wallet. */
+    public long RefundedAmount { get; set; }
 }
 
 /* The customer's view of their order (REQ-CUS-10, DER-CUS-09). */
 public class CustomerOrderDto : EntityDto<Guid>
 {
     public long Number { get; set; }
+
+    public OrderPaymentDto? Payment { get; set; }
+
+    public string? CouponCode { get; set; }
 
     public OrderStatus Status { get; set; }
 

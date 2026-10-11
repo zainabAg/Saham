@@ -19,6 +19,7 @@ public static class PricingConfiguration
         builder.Ignore<QuoteAddressSnapshot>();
         builder.Ignore<QuoteText>();
         builder.Ignore<PriceBreakdown>();
+        builder.Ignore<QuoteCouponSnapshot>();
     }
 
     public static void ConfigureSahamPricing(this ModelBuilder builder)

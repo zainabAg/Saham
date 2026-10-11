@@ -20,6 +20,9 @@ public static class OutboxEventTypes
     public const string CustomerCashBanned = "CUSTOMER_CASH_BANNED";
     public const string DriverCashOverdue = "DRIVER_CASH_OVERDUE";
     public const string DriverReviewed = "DRIVER_REVIEWED";
+    public const string RefundSucceeded = "REFUND_SUCCEEDED";
+    public const string RefundFailedFinal = "REFUND_FAILED_FINAL";
+    public const string DriverPayoutPaid = "DRIVER_PAYOUT_PAID";
 }
 
 public static class OutboxAggregateTypes

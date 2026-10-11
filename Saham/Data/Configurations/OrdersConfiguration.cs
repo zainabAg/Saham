@@ -52,6 +52,11 @@ public static class OrdersConfiguration
             b.Property(x => x.CancelReason).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
             b.Property(x => x.CancelledByType).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
             b.Property(x => x.FailureReason).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.Property(x => x.CancelChargedTo).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.Property(x => x.CouponCode).HasMaxLength(Entities.Coupons.Coupon.CodeMaxLength);
+            b.Property(x => x.CouponDiscountType).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.Property(x => x.CouponFundedBy).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.HasIndex(x => x.CouponId);
             b.Property(x => x.CancelNote).HasMaxLength(512);
             b.Property(x => x.DeliveryLocation).HasColumnType(GeographyConfiguration.PointColumnType);
             b.Property(x => x.DeliveryDescription).IsRequired().HasMaxLength(CustomerAddress.DescriptionMaxLength);
@@ -89,6 +94,7 @@ public static class OrdersConfiguration
             b.OwnsOne(x => x.NameSnapshot, n => n.ToJson());
             b.Property(x => x.Status).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
             b.Property(x => x.RemovedReason).HasMaxLength(64);
+            b.HasIndex(x => x.SubstituteForItemId);
             b.HasOne<MenuItem>().WithMany().HasForeignKey(x => x.MenuItemId).OnDelete(DeleteBehavior.Restrict);
         });
 

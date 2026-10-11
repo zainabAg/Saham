@@ -110,6 +110,7 @@ public class RolesAndPermissionsDataSeedContributor : IDataSeedContributor, ITra
             P.Zones.Manage,
             P.Complaints.Handle,
             P.Compensation.Credit, P.Compensation.Approve,
+            P.Refunds.RetryOrResolve /* sees and retries refunds; returning money by hand stays with the accountant (BR-070) */,
             P.Cash.HandoverRecord, P.Cash.FloatIssue,
             P.Settlements.View, P.Settlements.GenerateConfirm, P.Settlements.MarkPaid,
             P.Ledger.AdjustmentCreate, P.Ledger.AdjustmentApprove, P.Ledger.Writeoff, P.Ledger.BalancesView,

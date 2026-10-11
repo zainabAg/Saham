@@ -20,6 +20,9 @@ public enum IncidentType
     CashCapReached = 10,
     DeliveryCodeSmsFailed = 11,
     ScheduledRestaurantClosed = 12,
+    RefundFailed = 13,          // UC-22 E2: the accountant's queue
+    PaymentAmountMismatch = 14, // UC-05 E5
+    CouponRequested = 15,       // BR-072: a restaurant asks the owner for a coupon
     Other = 99
 }
 
@@ -47,7 +50,10 @@ public class Incident : CreationAuditedAggregateRoot<Guid>
     public const int ResolutionMaxLength = 512;
 
     /* Financial incidents are also the accountant's queue (DER-OPS-02). */
-    public static readonly IncidentType[] FinancialTypes = { IncidentType.CashOverdue, IncidentType.CashCapReached };
+    public static readonly IncidentType[] FinancialTypes =
+    {
+        IncidentType.CashOverdue, IncidentType.CashCapReached, IncidentType.RefundFailed, IncidentType.PaymentAmountMismatch
+    };
 
     public IncidentType IncidentType { get; private set; }
 

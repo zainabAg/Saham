@@ -18,8 +18,9 @@ namespace Saham.Entities.Orders;
  *   - the quote belongs to the customer, is not expired and not used yet;
  *   - everything is re-validated and re-priced now; if anything differs from what the
  *     customer saw, a fresh quote is saved and PRICE_CHANGED is returned (SRS 6-A);
- *   - cash only when allowed (BR-065), and the banknote must cover the amount (UC A4).
- * Wallet payment arrives with the payment provider (phase 9). */
+ *   - cash only when allowed (BR-065), and the banknote must cover the amount (UC A4);
+ *   - a wallet order waits in PendingPayment until the provider captures it (UC-05, PaymentManager);
+ *   - the coupon is reserved in the same transaction (BR-010), so its last use is taken once. */
 public class OrderManager : DomainService
 {
     private readonly IRepository<Quote, Guid> _quoteRepository;
@@ -27,14 +28,17 @@ public class OrderManager : DomainService
     private readonly QuoteManager _quoteManager;
     private readonly ISettingProvider _settingProvider;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
+    private readonly Coupons.CouponManager _couponManager;
 
     public OrderManager(
         IRepository<Quote, Guid> quoteRepository,
         IRepository<Restaurant, Guid> restaurantRepository,
         QuoteManager quoteManager,
         ISettingProvider settingProvider,
-        IUnitOfWorkManager unitOfWorkManager)
+        IUnitOfWorkManager unitOfWorkManager,
+        Coupons.CouponManager couponManager)
     {
+        _couponManager = couponManager;
         _unitOfWorkManager = unitOfWorkManager;
         _quoteRepository = quoteRepository;
         _restaurantRepository = restaurantRepository;
@@ -68,7 +72,7 @@ public class OrderManager : DomainService
             throw new BusinessException(SahamErrorCodes.QuoteExpired);
         }
 
-        if (paymentMethod != PaymentMethod.Cash)
+        if (paymentMethod == PaymentMethod.Wallet && !await _settingProvider.GetAsync<bool>(SahamSettings.Payments.WalletEnabled))
         {
             throw new BusinessException(SahamErrorCodes.WalletNotAvailable);
         }
@@ -80,7 +84,8 @@ public class OrderManager : DomainService
             quote.AddressId,
             quote.Snapshot.Lines.Select(l => (l.MenuItemId, l.Quantity)).ToList(),
             quote.OrderType,
-            quote.ScheduledFor);
+            quote.ScheduledFor,
+            quote.Snapshot.Coupon?.Code);
 
         if (fresh.PayloadHash != quote.PayloadHash)
         {
@@ -96,12 +101,12 @@ public class OrderManager : DomainService
                 .WithData("newAmountDue", fresh.AmountDue);
         }
 
-        if (!quote.Snapshot.CashAllowed)
+        if (paymentMethod == PaymentMethod.Cash && !quote.Snapshot.CashAllowed)
         {
             throw new BusinessException(SahamErrorCodes.CashNotAllowed);
         }
 
-        if (cashTendered.HasValue && cashTendered.Value < quote.AmountDue)
+        if (paymentMethod == PaymentMethod.Cash && cashTendered.HasValue && cashTendered.Value < quote.AmountDue)
         {
             throw new BusinessException(SahamErrorCodes.CashTenderedTooLow).WithData("amountDue", quote.AmountDue);
         }
@@ -114,7 +119,7 @@ public class OrderManager : DomainService
             restaurant.CityId,
             quote,
             paymentMethod,
-            cashTendered,
+            paymentMethod == PaymentMethod.Cash ? cashTendered : null,
             recipientName.IsNullOrWhiteSpace() ? null : recipientName!.Trim(),
             recipientPhone.IsNullOrWhiteSpace() ? null : PhoneNumberNormalizer.Normalize(recipientPhone),
             travelMinutes,
@@ -133,6 +138,11 @@ public class OrderManager : DomainService
         }
 
         order.Place(now, releaseAt, GuidGenerator.Create, customerId);
+        if (quote.Snapshot.Coupon != null)
+        {
+            await _couponManager.ReserveAsync(quote.Snapshot.Coupon.CouponId, order.Id, customerId, quote.Snapshot.Coupon.Amount);
+        }
+
         quote.MarkConsumed(order.Id);
         await _quoteRepository.UpdateAsync(quote);
 

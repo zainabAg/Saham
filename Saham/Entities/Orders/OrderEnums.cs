@@ -50,7 +50,17 @@ public enum CancelReason
     PaymentTimeout = 6,
     OpsCancelled = 7,
     ZoneClosed = 8,
-    RestaurantClosedAtRelease = 9
+    RestaurantClosedAtRelease = 9,
+    CustomerLateCancel = 10  // BR-045: by ops at the customer's request after acceptance
+}
+
+/* BR-069 / BR-045: who bears a cancellation — the driver's pay if he already reached the
+ * restaurant, and for a late customer cancellation the food (S − K). */
+public enum CancelCause
+{
+    Company = 0,    // no driver, closed zone, ops decision: an expense of the company
+    Restaurant = 1, // rejection after acceptance, item unavailable ending in cancellation
+    Customer = 2    // the customer asked support to cancel after acceptance
 }
 
 /* SRS 10.3: delivery failure reason codes (used from phase 6). */
@@ -109,7 +119,8 @@ public enum OrderItemStatus
 public enum ItemDecision
 {
     ContinueWithout = 0,
-    CancelOrder = 1
+    CancelOrder = 1,
+    AcceptSubstitute = 2  // BR-047 (b), when the kitchen proposed one
 }
 
 /* BR-034: the only three ways an order becomes Delivered. */
@@ -123,5 +134,6 @@ public enum DeliveryProofMethod
 public enum OrderModificationType
 {
     ItemsRemoved = 0,
-    AddressChanged = 1
+    AddressChanged = 1,
+    ItemsSubstituted = 2
 }

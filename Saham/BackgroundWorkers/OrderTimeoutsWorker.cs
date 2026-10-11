@@ -23,10 +23,10 @@ namespace Saham.BackgroundWorkers;
 
 /* Order timers, swept from the database so nothing is lost on restart (SRS 14.7):
  *   1. BR-023: no restaurant answer within N minutes → cancel (RESTAURANT_TIMEOUT);
- *   2. BR-047 (MVP): no customer decision on an unavailable item → continue without it
- *      (and an ITEM_DECISION_TIMEOUT incident so ops follow up);
- *   3. BR-021: scheduled order at its release time → send to the restaurant, or cancel
- *      (RESTAURANT_CLOSED_AT_RELEASE) if the restaurant is not taking orders.
+ *   2. BR-047: no customer decision on an unavailable item → ITEM_DECISION_TIMEOUT incident for ops,
+ *      then continue without it
+ *      after ops had a few more minutes to call the customer (UC-12 A3/E1);
+ *   (scheduled orders are released by ScheduledReleaseWorker).
  * Each order is handled in its own transaction; a concurrent change (e.g. the restaurant
  * accepting at the same second) wins and the timer simply skips that order. */
 public class OrderTimeoutsWorker : AsyncPeriodicBackgroundWorkerBase
@@ -56,27 +56,21 @@ public class OrderTimeoutsWorker : AsyncPeriodicBackgroundWorkerBase
                 return Task.CompletedTask;
             });
 
+        var opsCallMinutes = await settings.GetAsync<int>(SahamSettings.Orders.ItemDecisionOpsMinutes);
         await ProcessAsync(services, q => q.Where(o => o.HoldReason == OrderHoldReason.ItemUnavailable && o.ItemDecisionDeadlineAt <= now),
             async (order, sp, guid) =>
             {
-                // UC-12 A3: nobody decided in time; ops follow up with the customer.
-                await sp.GetRequiredService<IncidentManager>().OpenOnceAsync(IncidentType.ItemDecisionTimeout, IncidentSeverity.Medium,
-                    order.Id, orderId: order.Id, restaurantId: order.RestaurantId);
-                order.ResolveItemDecision(ItemDecision.ContinueWithout, ActorType.System, null, now, guid.Create);
-            });
-
-        await ProcessAsync(services, q => q.Where(o => o.Status == OrderStatus.Scheduled && o.ReleaseAt <= now),
-            async (order, sp, guid) =>
-            {
-                var restaurant = await sp.GetRequiredService<IRepository<Restaurant, Guid>>().GetAsync(order.RestaurantId);
-                var city = await sp.GetRequiredService<IRepository<City, Guid>>().GetAsync(order.CityId);
-                if (restaurant.AcceptsOrdersAt(now, city.ToLocalTime(now)))
+                if (order.ItemDecisionEscalatedAt == null)
                 {
-                    order.Release(now, guid.Create);
+                    // UC-12 A3: nobody decided in time — ops call the customer, who gets a few more minutes.
+                    await sp.GetRequiredService<IncidentManager>().OpenOnceAsync(IncidentType.ItemDecisionTimeout, IncidentSeverity.Medium,
+                        order.Id, orderId: order.Id, restaurantId: order.RestaurantId);
+                    order.EscalateItemDecision(now.AddMinutes(opsCallMinutes));
                 }
                 else
                 {
-                    order.CancelBySystem(CancelReason.RestaurantClosedAtRelease, now, guid.Create);
+                    // E1: ops could not reach the customer either — continue without the items (DEC-10).
+                    order.ResolveItemDecision(ItemDecision.ContinueWithout, ActorType.System, null, now, guid.Create);
                 }
             });
 
@@ -142,50 +136,9 @@ public class OrderTimeoutsWorker : AsyncPeriodicBackgroundWorkerBase
         }
     }
 
-    private async Task ProcessAsync(
+    private Task ProcessAsync(
         IServiceProvider services,
         Func<IQueryable<Order>, IQueryable<Order>> filter,
-        Func<Order, IServiceProvider, IGuidGenerator, Task> action)
-    {
-        var repository = services.GetRequiredService<IRepository<Order, Guid>>();
-        var unitOfWorkManager = services.GetRequiredService<IUnitOfWorkManager>();
-        var guidGenerator = services.GetRequiredService<IGuidGenerator>();
-        var asyncExecuter = services.GetRequiredService<Volo.Abp.Linq.IAsyncQueryableExecuter>();
-
-        List<Guid> ids;
-        using (var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: false))
-        {
-            ids = await asyncExecuter.ToListAsync(filter(await repository.GetQueryableAsync())
-                .OrderBy(o => o.CreationTime).Select(o => o.Id).Take(BatchSize));
-            await uow.CompleteAsync();
-        }
-
-        foreach (var id in ids)
-        {
-            try
-            {
-                using var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-                var order = await repository.GetAsync(id);
-
-                // Re-check on the fresh row: e.g. a restaurant that accepted a second ago must not be
-                // cancelled by the timeout (Accepted → Cancelled is itself a legal transition).
-                if (!filter(new[] { order }.AsQueryable()).Any())
-                {
-                    continue;
-                }
-
-                await action(order, services, guidGenerator);
-                await repository.UpdateAsync(order);
-                await uow.CompleteAsync();
-            }
-            catch (AbpDbConcurrencyException)
-            {
-                // Someone else changed the order first; their change wins.
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Order timer failed for order {OrderId}", id);
-            }
-        }
-    }
+        Func<Order, IServiceProvider, IGuidGenerator, Task> action) =>
+        OrderSweeper.ProcessAsync(services, filter, action, Logger, BatchSize);
 }

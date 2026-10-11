@@ -68,6 +68,15 @@ public class SahamAutoMapperProfile : Profile
             .Ignore(d => d.RestaurantName)
             .Ignore(d => d.AssignedToName);
         CreateMap<Notification, NotificationDto>();
+
+        // Phase 9
+        CreateMap<Entities.Coupons.Coupon, Services.Dtos.Coupons.CouponDto>()
+            .Ignore(d => d.RestaurantName);
+        CreateMap<Entities.Payments.Refund, Services.Dtos.Finance.RefundDto>()
+            .Ignore(d => d.OrderNumber);
+        CreateMap<Entities.Settlements.Settlement, Services.Dtos.Finance.SettlementDto>()
+            .Ignore(d => d.PartyName)
+            .Ignore(d => d.Lines);
         /* Create your AutoMapper object mappings here */
     }
 }

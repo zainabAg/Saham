@@ -30,6 +30,7 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Orders.AverageSpeedKmh, "20");              // ETA estimate (motorbike in town)
         Add(context, SahamSettings.Orders.PickupBufferMinutes, "5");           // ETA: driver reaching the restaurant
         Add(context, SahamSettings.Orders.ScheduleReleaseMarginMinutes, "10"); // BR-021
+        Add(context, SahamSettings.Orders.ItemDecisionOpsMinutes, "5");        // BR-047 / UC-12 E1: extra minutes for the ops call
 
         // Dispatch
         Add(context, SahamSettings.Dispatch.OfferTimeoutSeconds, "30");        // S-08
@@ -54,6 +55,14 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Cash.OverdueHour, "12");                    // DEC-09
         Add(context, SahamSettings.Cash.FloatAmount, "25000");                 // REC-04
         Add(context, SahamSettings.Cash.BusinessDayEndHour, "4");              // ASM-09
+
+        // Payments (UC-05, UC-22)
+        Add(context, SahamSettings.Payments.WalletEnabled, "true");            // EXT-01: FakeWalletProvider until signed
+        Add(context, SahamSettings.Payments.RefundRetrySeconds, "60,300,900,3600,10800"); // UC-22 E1: 1, 5, 15, 60, 180 min
+
+        // Settlements (DEC-09, BR-040, BR-068)
+        Add(context, SahamSettings.Settlements.DriverPayoutDay, "Thursday");   // earnings up to Wednesday
+        Add(context, SahamSettings.Settlements.RestaurantWeekStartDay, "Saturday"); // week Saturday → Friday
 
         // Restaurants
         Add(context, SahamSettings.Restaurants.TabletOfflineSeconds, "120");   // DER-OPS-01: tablet pings every 60 s

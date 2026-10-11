@@ -161,6 +161,25 @@ public class Order : AuditedAggregateRoot<Guid>
 
     public FailureReason? FailureReason { get; private set; }
 
+    /* BR-069 / BR-045: who bears the cost of a cancellation (driver pay, late-cancel charge). */
+    public CancelCause? CancelChargedTo { get; private set; }
+
+    // Coupon (BR-010..012): copied from the quote; type, value and cap let BR-048 recompute K'.
+    public Guid? CouponId { get; private set; }
+
+    public string? CouponCode { get; private set; }
+
+    public Coupons.CouponDiscountType? CouponDiscountType { get; private set; }
+
+    public long CouponValue { get; private set; }
+
+    public long? CouponMaxDiscount { get; private set; }
+
+    public Coupons.CouponFundedBy? CouponFundedBy { get; private set; }
+
+    /* BR-047 / UC-12 A3: no decision in time → ops call the customer, with a few more minutes. */
+    public DateTime? ItemDecisionEscalatedAt { get; private set; }
+
     public ICollection<OrderItem> Items { get; private set; }
 
     public ICollection<OrderStatusHistory> History { get; private set; }
@@ -232,6 +251,16 @@ public class Order : AuditedAggregateRoot<Guid>
         EtaMinAt = s.EtaMinAt;
         EtaMaxAt = s.EtaMaxAt;
 
+        if (s.Coupon != null)
+        {
+            CouponId = s.Coupon.CouponId;
+            CouponCode = s.Coupon.Code;
+            CouponDiscountType = s.Coupon.DiscountType;
+            CouponValue = s.Coupon.Value;
+            CouponMaxDiscount = s.Coupon.MaxDiscount;
+            CouponFundedBy = s.Coupon.FundedBy;
+        }
+
         foreach (var line in s.Lines)
         {
             Items.Add(new OrderItem(newId(), id, line.MenuItemId,
@@ -242,10 +271,13 @@ public class Order : AuditedAggregateRoot<Guid>
 
     // ---------------------------------------------------------------- creation
 
-    /* T-02 (cash, ASAP) and T-03 (cash, scheduled). Wallet orders start in PendingPayment (phase 9). */
+    /* T-02 (cash, ASAP) and T-03 (cash, scheduled). T-01: a wallet order waits in PendingPayment,
+     * invisible to the restaurant, until the provider confirms the capture (BR-022). */
     internal void Place(DateTime now, DateTime? releaseAt, Func<Guid> newId, Guid customerUserId)
     {
-        var target = OrderType == OrderType.Scheduled ? OrderStatus.Scheduled : OrderStatus.Placed;
+        var target = PaymentMethod == PaymentMethod.Wallet
+            ? OrderStatus.PendingPayment
+            : OrderType == OrderType.Scheduled ? OrderStatus.Scheduled : OrderStatus.Placed;
         Status = target;
         ReleaseAt = releaseAt;
         if (target == OrderStatus.Placed)
@@ -254,6 +286,20 @@ public class Order : AuditedAggregateRoot<Guid>
         }
 
         AddHistory(newId, OrderEventType.Transition, null, target, ActorType.Customer, customerUserId, null, now);
+    }
+
+    /* T-04 / T-05: the wallet payment was captured; the order goes to the restaurant (or waits for
+     * its scheduled release). A scheduled order whose release time has passed goes out at once. */
+    public void ConfirmPayment(DateTime now, Func<Guid> newId)
+    {
+        var target = OrderType == OrderType.Scheduled && ReleaseAt.HasValue && ReleaseAt.Value > now
+            ? OrderStatus.Scheduled
+            : OrderStatus.Placed;
+        TransitionTo(target, ActorType.System, null, "PAYMENT_CAPTURED", now, newId);
+        if (target == OrderStatus.Placed)
+        {
+            PlacedAt = now;
+        }
     }
 
     // ---------------------------------------------------------------- restaurant
@@ -306,7 +352,8 @@ public class Order : AuditedAggregateRoot<Guid>
 
     /* BR-047: the kitchen reports items that ran out after acceptance. The order is held,
      * dispatch is paused, and the customer has a few minutes to decide. */
-    public void ReportItemsUnavailable(IReadOnlyCollection<Guid> orderItemIds, Guid by, DateTime decisionDeadline, DateTime now, Func<Guid> newId)
+    public void ReportItemsUnavailable(IReadOnlyCollection<Guid> orderItemIds, Guid by, DateTime decisionDeadline, DateTime now, Func<Guid> newId,
+        IReadOnlyCollection<ProposedSubstitute>? substitutes = null)
     {
         if (Status is not (OrderStatus.Accepted or OrderStatus.Ready))
         {
@@ -326,6 +373,20 @@ public class Order : AuditedAggregateRoot<Guid>
             line.ReportUnavailable();
         }
 
+        // BR-047 (b) / ASM-30: an optional substitute per line, from the same menu, never dearer.
+        foreach (var substitute in substitutes ?? Array.Empty<ProposedSubstitute>())
+        {
+            var original = lines.FirstOrDefault(l => l.Id == substitute.OrderItemId)
+                           ?? throw new BusinessException(SahamErrorCodes.OrderItemNotFound);
+            if (substitute.UnitPrice > original.UnitPrice || substitute.MenuItemId == original.MenuItemId)
+            {
+                throw new BusinessException(SahamErrorCodes.InvalidSubstitute).WithData("maxPrice", original.UnitPrice);
+            }
+
+            Items.Add(OrderItem.ProposeSubstitute(newId(), original, substitute.MenuItemId, substitute.Name, substitute.UnitPrice));
+        }
+
+        ItemDecisionEscalatedAt = null;
         HoldReason = OrderHoldReason.ItemUnavailable;
         ItemDecisionDeadlineAt = decisionDeadline;
         if (DispatchStatus is DispatchStatus.NotStarted or DispatchStatus.Searching)
@@ -345,12 +406,25 @@ public class Order : AuditedAggregateRoot<Guid>
             throw new BusinessException(SahamErrorCodes.NoItemDecisionPending);
         }
 
+        var proposed = Items.Where(i => i.Status == OrderItemStatus.ProposedSubstitute).ToList();
+        if (decision == ItemDecision.AcceptSubstitute && proposed.Count == 0)
+        {
+            throw new BusinessException(SahamErrorCodes.NoSubstituteProposed);
+        }
+
         AddHistory(newId, OrderEventType.ItemDecision, Status, Status, actorType, by, decision.ToString(), now);
 
         var unavailable = Items.Where(i => i.IsReportedUnavailable).ToList();
         var remaining = Items.Where(i => i.Status == OrderItemStatus.Active && !i.IsReportedUnavailable).ToList();
+        var added = decision == ItemDecision.AcceptSubstitute ? proposed : new List<OrderItem>();
 
-        if (decision == ItemDecision.CancelOrder || remaining.Count == 0)
+        // Substitutes not taken are dropped.
+        foreach (var line in proposed.Except(added))
+        {
+            line.Remove("SUBSTITUTE_DECLINED", now);
+        }
+
+        if (decision == ItemDecision.CancelOrder || remaining.Count + added.Count == 0)
         {
             // The restaurant is the cause (UC-12 A1/A2).
             ClearHold(actorType, by, now, newId);
@@ -358,8 +432,21 @@ public class Order : AuditedAggregateRoot<Guid>
             return;
         }
 
-        RemoveItems(unavailable, actorType, by, now, newId);
+        ChangeItems(unavailable, added, actorType, by, now, newId);
         ClearHold(actorType, by, now, newId);
+    }
+
+    /* UC-12 A3: nobody answered in time — ops call the customer, who gets a few more minutes
+     * before the order continues without the items (E1). */
+    public void EscalateItemDecision(DateTime newDeadline)
+    {
+        if (HoldReason != OrderHoldReason.ItemUnavailable || ItemDecisionEscalatedAt.HasValue)
+        {
+            throw new BusinessException(SahamErrorCodes.NoItemDecisionPending);
+        }
+
+        ItemDecisionEscalatedAt = ItemDecisionDeadlineAt;
+        ItemDecisionDeadlineAt = newDeadline;
     }
 
     /* T-14 / T-15: the restaurant cancels an accepted order, reason mandatory (BR-046). */
@@ -550,15 +637,30 @@ public class Order : AuditedAggregateRoot<Guid>
         Cancel(Orders.CancelReason.CustomerCancelled, null, ActorType.Customer, by, now, newId);
     }
 
-    /* Ops may cancel any order before pickup, with a reason (order.cancel.ops ✱). */
-    public void CancelByOps(string note, Guid by, DateTime now, Func<Guid> newId)
+    /* Ops may cancel any order before pickup, with a reason (order.cancel.ops ✱), and say who caused it:
+     *   Company    — ops decision, no driver, closed zone: the company bears the cost;
+     *   Restaurant — the restaurant cannot deliver after accepting (BR-046);
+     *   Customer   — the customer asked support after acceptance (BR-045): they pay the food S − K.
+     * Before acceptance the customer cancels for free from the app, so "Customer" is refused there. */
+    public void CancelByOps(string note, Guid by, DateTime now, Func<Guid> newId, CancelCause cause = CancelCause.Company)
     {
         if (note.IsNullOrWhiteSpace())
         {
             throw new BusinessException(SahamErrorCodes.CancelNoteRequired);
         }
 
-        Cancel(Orders.CancelReason.OpsCancelled, note, ActorType.Staff, by, now, newId);
+        if (cause == CancelCause.Customer && Status is not (OrderStatus.Accepted or OrderStatus.Ready))
+        {
+            throw new BusinessException(SahamErrorCodes.LateCancelOnlyAfterAcceptance).WithData("status", Status.ToString());
+        }
+
+        var reason = cause switch
+        {
+            CancelCause.Customer => Orders.CancelReason.CustomerLateCancel,
+            CancelCause.Restaurant => Orders.CancelReason.RestaurantCancelled,
+            _ => Orders.CancelReason.OpsCancelled
+        };
+        Cancel(reason, note, ActorType.Staff, by, now, newId);
     }
 
     /* BR-023 restaurant timeout, BR-021 closed at release, etc. */
@@ -579,26 +681,44 @@ public class Order : AuditedAggregateRoot<Guid>
         CancelledByType = actorType;
         CancelledBy = by;
         CancelledAt = now;
+        CancelChargedTo = reason switch
+        {
+            Orders.CancelReason.RestaurantRejected or Orders.CancelReason.RestaurantCancelled
+                or Orders.CancelReason.RestaurantTimeout or Orders.CancelReason.ItemUnavailable => CancelCause.Restaurant,
+            Orders.CancelReason.CustomerLateCancel => CancelCause.Customer,
+            _ => CancelCause.Company
+        };
         HoldReason = null;
         ItemDecisionDeadlineAt = null;
         DispatchStatus = DispatchStatus.Stopped; // INV-04: no offer or assignment remains
     }
 
-    /* BR-048: S' from remaining items; discount never grows; delivery fee never grows
-     * (a granted free delivery stays); minimum order is not re-applied; C' and R' recomputed. */
-    private void RemoveItems(List<OrderItem> lines, ActorType actorType, Guid? by, DateTime now, Func<Guid> newId)
+    /* BR-048: unavailable lines removed, accepted substitutes added (at their price ≤ the original);
+     * S' from the active items; the coupon discount recomputed with its own rules but never above
+     * the old one (K' ≤ K); delivery fee never grows (a granted free delivery stays); minimum order
+     * is not re-applied; C' and R' recomputed. A wallet order is refunded the difference
+     * (PaymentManager), a cash order simply collects the new amount. */
+    private void ChangeItems(List<OrderItem> removed, List<OrderItem> added, ActorType actorType, Guid? by, DateTime now, Func<Guid> newId)
     {
         var before = AmountsJson();
         var oldDue = AmountDue;
 
-        foreach (var line in lines)
+        foreach (var line in removed)
         {
             line.Remove("ITEM_UNAVAILABLE", now);
         }
 
+        foreach (var line in added)
+        {
+            line.ActivateSubstitute();
+        }
+
         ItemsSubtotal = Items.Where(i => i.Status == OrderItemStatus.Active).Sum(i => i.LineTotal);
-        RestaurantDiscount = Math.Min(RestaurantDiscount, ItemsSubtotal);
-        CompanyDiscount = Math.Min(CompanyDiscount, ItemsSubtotal - RestaurantDiscount);
+        var couponLimit = CouponDiscountType.HasValue
+            ? Coupons.Coupon.ComputeDiscount(CouponDiscountType.Value, CouponValue, CouponMaxDiscount, ItemsSubtotal)
+            : ItemsSubtotal;
+        RestaurantDiscount = Math.Min(RestaurantDiscount, Math.Min(couponLimit, ItemsSubtotal));
+        CompanyDiscount = Math.Min(CompanyDiscount, Math.Min(couponLimit, ItemsSubtotal - RestaurantDiscount));
         DiscountAmount = CompanyDiscount + RestaurantDiscount;
         TotalAmount = ItemsSubtotal - DiscountAmount + DeliveryFeeCharged;
         CommissionAmount = PricingCalculator.RoundHalfUp((ItemsSubtotal - RestaurantDiscount) * CommissionRateBp, 10_000);
@@ -606,10 +726,12 @@ public class Order : AuditedAggregateRoot<Guid>
         CreditApplied = Math.Min(CreditApplied, TotalAmount + DebtCollected);
         AmountDue = TotalAmount + DebtCollected - CreditApplied;
 
-        Modifications.Add(new OrderModification(newId(), Id, OrderModificationType.ItemsRemoved,
+        Modifications.Add(new OrderModification(newId(), Id,
+            added.Count > 0 ? OrderModificationType.ItemsSubstituted : OrderModificationType.ItemsRemoved,
             before, AmountsJson(), AmountDue - oldDue, actorType, by, now));
         AddHistory(newId, OrderEventType.Modified, Status, Status, actorType, by,
-            string.Join(",", lines.Select(l => l.NameSnapshot.Ar)), now);
+            string.Join(",", removed.Select(l => l.NameSnapshot.Ar)) +
+            (added.Count > 0 ? " → " + string.Join(",", added.Select(l => l.NameSnapshot.Ar)) : string.Empty), now);
     }
 
     private void ClearHold(ActorType actorType, Guid? by, DateTime now, Func<Guid> newId)

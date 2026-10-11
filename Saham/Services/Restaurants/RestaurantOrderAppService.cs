@@ -30,13 +30,16 @@ public class RestaurantOrderAppService : SahamAppService, IRestaurantOrderAppSer
     private readonly ICurrentScope _currentScope;
     private readonly OrderDtoMapper _mapper;
     private readonly DeliveryManager _deliveryManager;
+    private readonly IRepository<Entities.Restaurants.MenuItem, Guid> _menuItemRepository;
 
     public RestaurantOrderAppService(
         IRepository<Order, Guid> orderRepository,
         ICurrentScope currentScope,
         OrderDtoMapper mapper,
-        DeliveryManager deliveryManager)
+        DeliveryManager deliveryManager,
+        IRepository<Entities.Restaurants.MenuItem, Guid> menuItemRepository)
     {
+        _menuItemRepository = menuItemRepository;
         _orderRepository = orderRepository;
         _currentScope = currentScope;
         _mapper = mapper;
@@ -105,7 +108,8 @@ public class RestaurantOrderAppService : SahamAppService, IRestaurantOrderAppSer
     }
 
     /* BR-047: the order is held and the customer decides within N minutes. The restaurant
-     * never calls the customer; it gets the menu items it can switch off (DER-RST-06). */
+     * never calls the customer; it gets the menu items it can switch off (DER-RST-06).
+     * It may propose a substitute from its own available menu, same price or less (ASM-30). */
     [Authorize(SahamPermissions.Orders.ItemUnavailable)]
     public async Task<ReportItemsUnavailableResultDto> ReportItemsUnavailableAsync(Guid id, ReportItemsUnavailableDto input)
     {
@@ -113,7 +117,20 @@ public class RestaurantOrderAppService : SahamAppService, IRestaurantOrderAppSer
         var now = Clock.Now;
         var decisionMinutes = await SettingProvider.GetAsync<int>(SahamSettings.Orders.ItemDecisionMinutes);
 
-        order.ReportItemsUnavailable(input.OrderItemIds, CurrentUser.GetId(), now.AddMinutes(decisionMinutes), now, GuidGenerator.Create);
+        var substituteIds = input.Substitutes.Select(s => s.MenuItemId).Distinct().ToList();
+        var menuItems = (await _menuItemRepository.GetListAsync(m => substituteIds.Contains(m.Id))).ToDictionary(m => m.Id);
+        var substitutes = input.Substitutes.Select(s =>
+        {
+            if (!menuItems.TryGetValue(s.MenuItemId, out var item) || item.RestaurantId != order.RestaurantId || !item.IsOrderable)
+            {
+                throw new Volo.Abp.BusinessException(SahamErrorCodes.InvalidSubstitute).WithData("maxPrice", 0);
+            }
+
+            return new ProposedSubstitute(s.OrderItemId, item.Id, item.Name, item.Price);
+        }).ToList();
+
+        order.ReportItemsUnavailable(input.OrderItemIds, CurrentUser.GetId(), now.AddMinutes(decisionMinutes), now, GuidGenerator.Create,
+            substitutes);
         await _orderRepository.UpdateAsync(order);
 
         return new ReportItemsUnavailableResultDto

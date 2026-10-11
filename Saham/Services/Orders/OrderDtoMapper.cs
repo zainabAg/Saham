@@ -17,9 +17,12 @@ public class OrderDtoMapper : ITransientDependency
 {
     private readonly IRepository<Restaurant, Guid> _restaurantRepository;
     private readonly IRepository<IdentityUser, Guid> _userRepository;
+    private readonly IRepository<Entities.Payments.Payment, Guid> _paymentRepository;
 
-    public OrderDtoMapper(IRepository<Restaurant, Guid> restaurantRepository, IRepository<IdentityUser, Guid> userRepository)
+    public OrderDtoMapper(IRepository<Restaurant, Guid> restaurantRepository, IRepository<IdentityUser, Guid> userRepository,
+        IRepository<Entities.Payments.Payment, Guid> paymentRepository)
     {
+        _paymentRepository = paymentRepository;
         _restaurantRepository = restaurantRepository;
         _userRepository = userRepository;
     }
@@ -27,10 +30,26 @@ public class OrderDtoMapper : ITransientDependency
     public async Task<List<CustomerOrderDto>> ToCustomerAsync(IReadOnlyCollection<Order> orders)
     {
         var names = await GetRestaurantNamesAsync(orders);
+        var orderIds = orders.Where(o => o.PaymentMethod == PaymentMethod.Wallet).Select(o => o.Id).ToList();
+        var payments = (await _paymentRepository.GetListAsync(p => orderIds.Contains(p.OrderId)))
+            .GroupBy(p => p.OrderId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.CreationTime).First());
         return orders.Select(o => new CustomerOrderDto
         {
             Id = o.Id,
             Number = o.Number,
+            CouponCode = o.CouponCode,
+            Payment = payments.TryGetValue(o.Id, out var p)
+                ? new OrderPaymentDto
+                {
+                    PaymentId = p.Id,
+                    Status = p.Status,
+                    Amount = p.Amount,
+                    RedirectUrl = p.IsOpen ? p.RedirectUrl : null,
+                    ExpiresAt = p.ExpiresAt,
+                    RefundedAmount = p.RefundedAmount
+                }
+                : null,
             Status = o.Status,
             HoldReason = o.HoldReason,
             RestaurantId = o.RestaurantId,
@@ -162,7 +181,8 @@ public class OrderDtoMapper : ITransientDependency
             Quantity = i.Quantity,
             LineTotal = i.LineTotal,
             Status = i.Status,
-            IsReportedUnavailable = i.IsReportedUnavailable
+            IsReportedUnavailable = i.IsReportedUnavailable,
+            SubstituteForItemId = i.SubstituteForItemId
         }).ToList();
 
     private static string FirstName(string? name) =>

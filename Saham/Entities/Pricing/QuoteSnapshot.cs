@@ -20,15 +20,28 @@ public record QuoteSnapshot(
     long AmountDue,
     bool CashAllowed,
     DateTime EtaMinAt,
-    DateTime EtaMaxAt)
+    DateTime EtaMaxAt,
+    QuoteCouponSnapshot? Coupon = null)
 {
     /* Hash of the price-relevant parts only (not the ETA, which moves with time). */
     public string ComputeHash()
     {
-        var relevant = new { RestaurantId, PricingPlanId, Address, Lines, Breakdown, DebtCollected, CreditApplied, AmountDue };
+        var relevant = new { RestaurantId, PricingPlanId, Address, Lines, Breakdown, DebtCollected, CreditApplied, AmountDue, Coupon };
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(relevant))));
     }
 }
+
+/* The coupon applied to the quote (BR-010/011); reserved only when the order is created.
+ * Type, value and cap are kept so an item removal can recompute K' with the same rules (BR-048). */
+public record QuoteCouponSnapshot(
+    Guid CouponId,
+    string Code,
+    Coupons.CouponDiscountType DiscountType,
+    long Value,
+    long? MaxDiscount,
+    Coupons.CouponFundedBy FundedBy,
+    bool StackableWithFreeDelivery,
+    long Amount);
 
 public record QuoteLineSnapshot(
     Guid MenuItemId,

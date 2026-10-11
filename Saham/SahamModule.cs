@@ -227,6 +227,7 @@ public class SahamModule : AbpModule
     private void ConfigureNotifications(IConfiguration configuration)
     {
         Configure<NotificationOptions>(configuration.GetSection("Notifications"));
+        Configure<Integrations.Wallet.WalletOptions>(configuration.GetSection("Wallet"));
     }
 
     /* ABP would otherwise "touch" (ConcurrencyStamp, LastModificationTime) an aggregate whenever a
@@ -348,6 +349,38 @@ public class SahamModule : AbpModule
             options.Map(SahamErrorCodes.DeliveryCodeLocked, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.TooFarFromRestaurant, HttpStatusCode.UnprocessableEntity);
             options.Map(SahamErrorCodes.NoShowTooEarly, HttpStatusCode.UnprocessableEntity);
+
+            // Phase 8 / 9: state conflicts = 409, bad input = 400, a coupon or price that does not apply = 422
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.IncidentAlreadyResolved, SahamErrorCodes.NotificationNotDead,
+                         SahamErrorCodes.RefundExceedsPayment, SahamErrorCodes.InvalidRefundStatus,
+                         SahamErrorCodes.CouponAlreadyUsed, SahamErrorCodes.InvalidCouponStatus, SahamErrorCodes.CouponCodeTaken,
+                         SahamErrorCodes.NoSubstituteProposed, SahamErrorCodes.LateCancelOnlyAfterAcceptance,
+                         SahamErrorCodes.InvalidSettlementStatus, SahamErrorCodes.SettlementPeriodNotClosed
+                     })
+            {
+                options.Map(code, HttpStatusCode.Conflict);
+            }
+
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.IncidentSubjectRequired, SahamErrorCodes.InvalidCouponTerms,
+                         SahamErrorCodes.CouponRestaurantRequired, SahamErrorCodes.InvalidSubstitute,
+                         SahamErrorCodes.InvalidSettlementPeriod, SahamErrorCodes.UnknownReport
+                     })
+            {
+                options.Map(code, HttpStatusCode.BadRequest);
+            }
+
+            foreach (var code in new[]
+                     {
+                         SahamErrorCodes.CouponNotFound, SahamErrorCodes.CouponNotValidNow, SahamErrorCodes.CouponNotForRestaurant,
+                         SahamErrorCodes.CouponBelowMinSubtotal, SahamErrorCodes.CouponUsageLimitReached
+                     })
+            {
+                options.Map(code, HttpStatusCode.UnprocessableEntity);
+            }
             options.Map(SahamErrorCodes.NoDriverLocation, HttpStatusCode.UnprocessableEntity);
 
             foreach (var code in new[]
@@ -387,7 +420,8 @@ public class SahamModule : AbpModule
             typeof(OrderStatusHistory) /* already an audit trail of its own */,
             typeof(DriverLocation), typeof(DeliveryOffer) /* high volume; offers are their own log */,
             typeof(JournalEntry), typeof(JournalLine), typeof(LedgerAccount) /* the ledger is immutable and is its own audit trail */,
-            typeof(OutboxEvent), typeof(Notification) /* message queues, high volume */ };
+            typeof(OutboxEvent), typeof(Notification) /* message queues, high volume */,
+            typeof(Entities.Payments.PaymentEvent) /* raw provider webhooks, kept as received */ };
 
         /* BR-055 also covers users and roles, permissions and settings, which live in ABP's modules. */
         var platform = new[] { typeof(Volo.Abp.Identity.IdentityUser), typeof(Volo.Abp.Identity.IdentityRole),
@@ -669,5 +703,9 @@ public class SahamModule : AbpModule
         await context.AddBackgroundWorkerAsync<DriverStaleWorker>();
         await context.AddBackgroundWorkerAsync<CashOverdueWorker>();
         await context.AddBackgroundWorkerAsync<NotificationDispatchWorker>();
+        await context.AddBackgroundWorkerAsync<ScheduledReleaseWorker>();
+        await context.AddBackgroundWorkerAsync<PaymentTimeoutWorker>();
+        await context.AddBackgroundWorkerAsync<RefundWorker>();
+        await context.AddBackgroundWorkerAsync<DailyCloseWorker>();
     }
 }

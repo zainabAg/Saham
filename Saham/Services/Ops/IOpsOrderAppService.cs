@@ -17,7 +17,7 @@ public interface IOpsOrderAppService : IApplicationService
 
     Task<OpsOrderDto> GetAsync(Guid id);
 
-    Task<OpsOrderDto> CancelAsync(Guid id, CancelOrderDto input);
+    Task<OpsOrderDto> CancelAsync(Guid id, OpsCancelOrderDto input);
 
     Task<OpsOrderDto> DecideItemsAsync(Guid id, ItemDecisionDto input);
 

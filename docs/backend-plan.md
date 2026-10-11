@@ -307,14 +307,15 @@ amount_due = T + debt_collected − credit_applied
 - [x] الـ Outbox والإشعارات (I-6): `OutboxEvent` + `Notification` (UK `EventKey, Channel, UserId`)، `NotificationPlanner` (مصفوفة I.2-6)، `NotificationSender` (3 محاولات بفواصل متزايدة ثم `Dead`)، `NotificationDispatchWorker`، `IPushSender` + `LoggingPushSender`، SMS الرمز صار عبر الطابور، و`NotificationAppService` للفاشلة مع إعادة الإرسال.
 - [ ] تصدير التقارير وتسجيله بالتدقيق (SRS 5.5) ← مع التقارير بالمرحلة 9. سلسلة البصمات `prev_hash/hash` غير مطبقة (قرار: الاكتفاء بجداول ABP). `FcmPushProvider` وتسجيل الأجهزة لحين توفر مفاتيح Firebase.
 
-### المرحلة 9 — الإضافات (بالترتيب، إن بقي وقت)
-1. الدفع بالمحفظة + `FakeWalletProvider` + webhook + الاسترداد الآلي (`RefundWorker`).
-2. الكشوف الرسمية: يومي للسائق، أرباح الخميس، أسبوعي للمطعم (`Settlement` + `DailyCloseWorker` 04:00).
-3. البديل في نفاد المادة واتصال المتابعة.
-4. الكوبونات بنوعيها + طلب كوبون المطعم وموافقة المالك.
-5. أجر السائق عند الإلغاء على المتسبب (نصف/كامل).
-6. التقارير الشهرية + تصدير Excel (`MiniExcel` أو `ClosedXML`).
-7. الطلب المجدول (حتى 3 أيام) + `ScheduledReleaseWorker`.
+### المرحلة 9 — الإضافات ✅
+- [x] 1. الدفع بالمحفظة (UC-05): `Payment`, `PaymentEvent`, `IWalletProvider` + `FakeWalletProvider` (جلسة → webhook موقّع HMAC → استعلام حالة)، `PaymentWebhookController` (`/api/payments/webhook/{provider}`)، `PaymentTimeoutWorker` (A1 الاستعلام، E2 الانتهاء)، `J-WALLET-CAPTURED/DELIVERED`. الاسترداد الآلي (UC-22): `Refund` + `RefundWorker` (1/5/15/60/180 د ثم `MANUAL_REVIEW` + حادثة)، `J-REFUND-INITIATED/SETTLED/MANUAL`، `RefundAppService` للمحاسب. الحالات: الإلغاء، حذف مادة، القبض المتأخر (E4)، مبلغ خاطئ (E5)، إشعار مكرر (E3).
+- [x] 2. الكشوف (UC-23/24, BR-040/068): `Settlement` + `SettlementManager` (ربط الأسطر مرة واحدة)، `DailyCloseWorker` (يومي للسائق، أرباح الخميس، أسبوعي للمطعم)، `SettlementAppService` (عرض حسب النطاق، توليد، تأكيد، دفع/تحصيل)، `J-DRIVER-PAYOUT`, `J-RESTAURANT-PAYOUT/COLLECT`، Trigger يمنع تغيير كشف مؤكد.
+- [x] 3. البديل (BR-047 ب، ASM-30) بسعر ≤ الأصل، وقرار `AcceptSubstitute`، و`ItemsSubstituted`؛ واتصال المتابعة: انتهاء المهلة → حادثة + `ItemDecisionOpsMinutes` إضافية ثم الإكمال (UC-12 A3/E1).
+- [x] 4. الكوبونات (BR-010..012, BR-072): `Coupon`, `CouponRedemption`, `CouponManager` (حجز ذري، تحرير/استهلاك)، الخصم في عرض السعر، `CouponAppService` للمالك و`RestaurantCouponAppService` لطلب المطعم + حادثة `CouponRequested`.
+- [x] 5. الإلغاء على المتسبب: `CancelCause` + `J-CANCEL-DRIVER-PAY` (نصف الأجر بعد الوصول للمطعم، BR-069) و`J-CUSTOMER-LATE-CANCEL` (BR-045، من المسبق أو دين).
+- [x] 6. التقارير RPT-01/02/03/04/07/08/09/11/12/13 (`ReportAppService`) + تصدير Excel بـ `MiniExcel` (POST، فيُسجل بالتدقيق — SRS 5.5).
+- [x] 7. الطلب المجدول: `ScheduledReleaseWorker` (منفصل عن مؤقتات الطلب) مع فحص منطقة الخدمة، والمحفظة تُقبض وقت الإنشاء.
+- [ ] مؤجل: مزود محفظة حقيقي (EXT-01)، شكاوى/تقييمات وRPT-10 (بعد MVP)، مصاريف التشغيل الشهرية (J-OPERATING-EXPENSE) والقيود التصحيحية (UC-25)، اعتماد الإرجاع اليدوي من شخص ثانٍ (BR-056)، المكالمة داخل التطبيق.
 
 ### المرحلة 10 — الاختبارات (يوم 6)
 - [ ] TC-14: 50 قبول متزامن → إسناد واحد. TC-15: لا يتجاوز سائق طلبين.

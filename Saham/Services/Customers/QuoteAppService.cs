@@ -33,7 +33,8 @@ public class QuoteAppService : SahamAppService, IQuoteAppService
             input.AddressId,
             input.Items.Select(i => (i.MenuItemId, i.Quantity)).ToList(),
             input.OrderType,
-            input.ScheduledFor);
+            input.ScheduledFor,
+            input.CouponCode);
 
         await _quoteRepository.InsertAsync(quote);
         return Map(quote);
@@ -78,6 +79,8 @@ public class QuoteAppService : SahamAppService, IQuoteAppService
             FreeDeliveryApplied = b.FreeDeliveryApplied,
             DeliveryFee = b.DeliveryFee,
             FreeDeliveryRemaining = b.FreeDeliveryRemaining,
+            CouponCode = s.Coupon?.Code,
+            CouponDiscount = s.Coupon?.Amount ?? 0,
             TotalAmount = b.TotalAmount,
             DebtCollected = s.DebtCollected,
             CreditApplied = s.CreditApplied,

@@ -178,13 +178,14 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
         return await MapAsync(await GetWithHistoryAsync(id));
     }
 
-    /* order.cancel.ops ✱: any state before pickup, reason mandatory. */
+    /* order.cancel.ops ✱: any state before pickup, reason mandatory, and who caused it
+     * (company / restaurant / customer after acceptance — BR-045, BR-069). */
     [Idempotent]
     [Authorize(SahamPermissions.Orders.CancelOps)]
-    public async Task<OpsOrderDto> CancelAsync(Guid id, CancelOrderDto input)
+    public async Task<OpsOrderDto> CancelAsync(Guid id, OpsCancelOrderDto input)
     {
         var order = await GetWithHistoryAsync(id);
-        order.CancelByOps(input.Note, CurrentUser.GetId(), Clock.Now, GuidGenerator.Create);
+        order.CancelByOps(input.Note, CurrentUser.GetId(), Clock.Now, GuidGenerator.Create, input.Cause);
 
         await _orderRepository.UpdateAsync(order);
         return await MapAsync(order);

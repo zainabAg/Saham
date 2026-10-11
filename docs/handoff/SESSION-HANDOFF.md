@@ -1,6 +1,6 @@
 # تسليم الجلسة — مشروع سهم (Saham)
 
-> آخر تحديث: 2026-10-11 (بعد إنجاز المرحلة 8). اقرأ هذا الملف + `NEXT-STEPS.md` + `docs/backend-plan.md` قبل أي شغل بجلسة جديدة.
+> آخر تحديث: 2026-10-11 (بعد إنجاز المرحلة 9). اقرأ هذا الملف + `NEXT-STEPS.md` + `docs/backend-plan.md` قبل أي شغل بجلسة جديدة.
 
 ---
 
@@ -44,10 +44,11 @@
 | 4 | الطلب ودورة حياته عند المطعم (`Order`, `OrderStateMachine`, `OrdersHub`, `OrderTimeoutsWorker`) | `ad3cfba` |
 | 5 | السائق والتوزيع (`Driver`, `DispatchManager`, `DispatchWorker`, `Incident` NO_DRIVER) | `309a3e9` |
 | 6 | الاستلام والتسليم (`DeliveryManager`, رمز التسليم، `DriverStaleWorker`، التتبع) | `76b177b` |
-| 7 | المال (`LedgerManager`, القيود، Triggers، `CashManager`, الأرصدة، «لم يُستلم») | `baf5122` ← **آخر كومت** |
-| 8 | لوحة العمليات، الحوادث، سجل التدقيق، الـ Outbox والإشعارات | **منجزة ومختبرة — بانتظار كومت المستخدم** |
+| 7 | المال (`LedgerManager`, القيود، Triggers، `CashManager`, الأرصدة، «لم يُستلم») | `baf5122` |
+| 8 | لوحة العمليات، الحوادث، سجل التدقيق (فوق جداول ABP)، الـ Outbox والإشعارات | `93395ed` |
+| 9 | المحفظة والاسترداد، الكشوف، البديل، الكوبونات، الإلغاء على المتسبب، التقارير + Excel، الإرسال المجدول | **منجزة ومختبرة — بانتظار كومت المستخدم** |
 
-الفرع الحالي: `Develop` (الفرع الرئيسي `main`). Migrations كلها مطبقة على Neon (آخرها `Phase8_Ops_Audit_Outbox`).
+الفرع الحالي: `Develop` (الفرع الرئيسي `main`). Migrations كلها مطبقة على Neon (آخرها `Phase9_Payments_Coupons_Settlements`). آخر كومت: `93395ed` (المرحلة 8).
 
 البنود المؤجلة صراحةً من المراحل السابقة (موجودة كـ `[ ]` في الخطة):
 - الكوبونات ← المرحلة 9.
@@ -55,42 +56,44 @@
 
 ---
 
-## 3. المرحلة الثامنة — منجزة (بانتظار الكومت)
-
-### القرارات اللي أخذها المستخدم بهاي المرحلة (نهائية)
-- **سجل التدقيق = (أ)**: عرض فوق جداول ABP (`AbpAuditLogs`, `AbpEntityChanges`) + `Reason` و`ActorRoles` بالـ `ExtraProperties`. **ماكو** جدول خاص ولا سلسلة بصمات `prev_hash/hash` ولا Trigger.
-- **Push**: `IPushSender` + `LoggingPushSender` (يكتب بسجل التطبيق) لحين مفاتيح Firebase.
-- **Outbox**: جدولين `AppOutboxEvents` (bigserial) + `AppNotifications` مع `UK(EventKey, Channel, UserId) NULLS NOT DISTINCT`.
-- **لغة الإشعار**: القالب يُترجم وقت الإرسال بـ `ar` (ماكو حقل لغة مفضلة بعد).
+## 3. المرحلة التاسعة — منجزة (بانتظار الكومت)
 
 ### شنو انبنى
-| الجزء | الملفات |
+| البند | الملفات الأساسية |
 |---|---|
-| الحوادث | `Entities/Support/Incident.cs` (أنواع جديدة: `DeliveryCodeSmsFailed`, `ScheduledRestaurantClosed`, `Other`؛ `AssignTo`, `UpdateNote`, `ResolvedBy`, حدث `IncidentChangedEto`)، `IncidentManager` (`OpenOnceAsync`, `OpenManualAsync`, `AutoResolveForOrderAsync`)، `IncidentOrderEventHandler` (إغلاق آلي + حوادث الإلغاء)، `Hubs/IncidentRealtimeNotifier.cs` |
-| الـ Workers | `OrderTimeoutsWorker`: تنبيه عدم الرد بعد 2 د، `OrderLate` + إشعار الزبون، `ItemDecisionTimeout`. `NotificationDispatchWorker` (كل 5 ث): ينشر الـ outbox ويرسل المستحق |
-| لوحة العمليات | `OpsOrderAppService.GetLiveAsync`، `OpsDriverAppService`، `OpsRestaurantAppService`، `IncidentAppService` (فتح/إقرار/إسناد/ملاحظة/حل، المحاسب = المالية فقط)، `RestaurantProfileAppService.HeartbeatAsync` + `TabletPresenceTracker` (`ExecuteUpdate` بدون لمس ConcurrencyStamp)، `OrdersHub` (مجموعة `finance` + تسجيل التابلت عند الاتصال) |
-| التدقيق | `Infrastructure/Auditing/SahamAuditLogContributor.cs` (يستخرج `reason/note/resolution` من بارامترات الطلب)، `Services/Admin/AuditLogAppService.cs` (`GetList` بفلتر `operation` + `GetEntityHistory`، الـ enums بأسمائها)، Entity History صار يشمل `IdentityUser/Role`, `PermissionGrant`, `Setting` |
-| الإشعارات | `Entities/Notifications/`: `OutboxEvent`, `Notification`, `OutboxManager`, `OutboxEventHandlers` (طلب + سائق)، `NotificationPlanner` (مصفوفة I.2-6)، `NotificationSender` (رندر + إرسال + إعادة + حادثة رمز التسليم)، `NotificationOptions`؛ `Integrations/Push/`؛ `Services/Admin/NotificationAppService.cs` |
-| أحداث صريحة للـ outbox | `DeliveryManager` (`CUSTOMER_CASH_BANNED`؛ و**SMS الرمز انشال** منه وصار عبر `ORDER_PICKED_UP`)، `CashManager` (`DRIVER_CASH_OVERDUE`)، `DriverReviewAppService` (`DRIVER_REVIEWED`) |
-| صلاحيات/إعدادات | `Saham.OpsBoard.View`، `Saham.Notifications.View/Retry` (عمليات + مالك)، `Incidents.Handle` للمحاسب؛ `Saham.Restaurants.TabletOfflineSeconds`=120، `Saham.Notifications.MaxAttempts`=3، `RetryBaseSeconds`=30 |
+| المحفظة (UC-05) | `Entities/Payments/` (`Payment`, `PaymentEvent`, `Refund`, `PaymentManager`)، `Integrations/Wallet/` (`IWalletProvider`, `FakeWalletProvider`)، `Controllers/PaymentWebhookController.cs` (`POST /api/payments/webhook/fake`، توقيع HMAC بالـ header `X-Saham-Signature`)، `Controllers/FakeWalletController.cs` (صفحة دفع وهمية، Development فقط)، `PaymentTimeoutWorker` |
+| الاسترداد (UC-22) | `RefundWorker`، `Services/Finance/RefundAppService.cs` (إعادة المحاولة؛ الإرجاع اليدوي **للمحاسب حصراً** بفحص الدور)، `PaymentPostingService` (`J-WALLET-*`, `J-REFUND-*`) |
+| الأموال عند تغيّر الطلب | `LedgerOrderEventHandler` صار يغطي: التسليم (كاش/محفظة)، «لم يُستلم»، حادثة السائق، **الإلغاء** (`J-CANCEL-DRIVER-PAY`, `J-CUSTOMER-LATE-CANCEL`، الاسترداد، الكوبون)، وتعديل المواد (استرداد الفرق) |
+| الكشوف | `Entities/Settlements/` (`Settlement`, `SettlementManager`)، `DailyCloseWorker`، `Services/Finance/SettlementAppService.cs`، Trigger `trg_settlements_frozen` |
+| البديل واتصال المتابعة | `Order.ReportItemsUnavailable(..., substitutes)`، `ItemDecision.AcceptSubstitute`، `Order.EscalateItemDecision`، `OrderTimeoutsWorker` (حادثة ثم دقائق إضافية ثم الإكمال) |
+| الكوبونات | `Entities/Coupons/`، `Services/Admin/CouponAppService.cs` (المالك)، `Services/Restaurants/RestaurantCouponAppService.cs` (طلب المطعم)، الكوبون بـ `QuoteManager` و`OrderManager` |
+| الإلغاء على المتسبب | `CancelCause` + `OpsCancelOrderDto.Cause` (Company / Restaurant / Customer)، `CancelReason.CustomerLateCancel` |
+| التقارير | `Services/Reports/ReportAppService.cs` (`GET /api/app/report?report=N&from=&to=`, `POST /api/app/report/export` → xlsx)، حزمة `MiniExcel` |
+| المجدول | `ScheduledReleaseWorker` + `OrderSweeper` (الحلقة المشتركة لمؤقتات الطلب) |
+| إعدادات جديدة | `Saham.Payments.WalletEnabled`، `Saham.Payments.RefundRetrySeconds` (`60,300,900,3600,10800`)، `Saham.Settlements.DriverPayoutDay` (Thursday)، `Saham.Settlements.RestaurantWeekStartDay` (Saturday)، `Saham.Orders.ItemDecisionOpsMinutes` (5) |
+| إعدادات تطبيق (appsettings) | قسم `Wallet:Fake` (`WebhookSecret`, `PayPageBaseUrl`, `EnablePayPage`, `RefundFailure` = None/Retryable/Final للاختبار) |
 
 ### ملاحظات تصميم مهمة
-- الـ **Realtime** (SignalR) بقى مباشر بعد الـ commit مثل قبل؛ الـ Outbox يخص **PUSH و SMS** بس (الدائمة).
-- نص الإشعار ما يُخزن: `Template` + `Args`؛ رمز التسليم يُقرأ من الطلب (`DeliveryOtpProtected`) وقت الإرسال، فما ينحفظ بجدول الإشعارات.
-- `Notifications:SimulateFailure` (إعداد تطبيق، مو Setting) — للاختبار فقط: `Notifications__SimulateFailure__0=Sms` يخلي كل SMS يفشل.
-- فلتر التدقيق اسمه `operation` مو `action` — `action` اسم محجوز بـ MVC route values (كان يرجع صفر نتائج).
+- المال المقبوض بالمحفظة يبقى `CUSTOMER_PREPAID` لحد ما ينتهي الطلب. كل سطر مسبق يحمل `OrderId`، فـ«المتبقي للطلب» = مجموع واحد، والاسترداد عند الإلغاء = هذا المتبقي بعد خصم رسوم الإلغاء.
+- `BR-042` (الاسترداد ≤ المقبوض) محمي بـ `Payment.RefundedAmount` + الـ ConcurrencyStamp + CHECK بقاعدة البيانات.
+- حجز الكوبون ذري بـ `ExecuteUpdate ... WHERE UsedCount < Limit`، والتحرير يرجع الاستخدام.
+- الكشف يربط أسطر حساب الطرف غير المسوّاة لحد نهاية الفترة (`SettlementId` NULL → قيمة، التحديث الوحيد المسموح بـ Trigger الدفتر)، وسطر الدفع ينضاف لنفس الكشف.
+- حساب `admin` بـ ABP عنده **كل** الصلاحيات تلقائياً، فالفصل بين المهام (SOD) يحتاج فحص دور صريح، مثل `ResolveManuallyAsync`.
 
 ### نتيجة التحقق على Neon
-- `phase8_tests.py` (تشغيل A: `RestaurantAlertMinutes=1`, `LateThresholdMinutes=-120`, `RetryBaseSeconds=3`): **54/55**، والواحد الفاشل (الـ enum يظهر رقم بالتدقيق) انصلح وتأكدنا منه يدوياً (`Placed → Cancelled`).
-- `phase8_failure.py` (تشغيل B: `Notifications__SimulateFailure__0=Sms`): **11/11** — 3 محاولات بفواصل متزايدة ← `Dead` ← حادثة `DeliveryCodeSmsFailed` ← علم `NOTIFICATION_FAILED` باللوحة ← إعادة إرسال يدوية.
-- السجلات نظيفة، وما بقى `Saham.exe` يتيم.
-- السكربتات بـ: `C:\Users\BESTLA~1\AppData\Local\Temp\claude\E--abp-projects-Saham\ff7f1f2e-ea8f-4495-acf3-4807969264ac\scratchpad\` (مجلد مؤقت).
+- `phase9_tests.py` (تشغيل A): **75/75** — الكوبونات، المحفظة (توقيع خاطئ، مكرر، مبلغ خاطئ، قبض متأخر، انتهاء، استعلام صامت)، الاسترداد الناجح والإشعار، البديل واسترداد الفرق، الإلغاء المتأخر (محفظة وكاش ودين يُحصّل لاحقاً)، أجر السائق عند الإلغاء، التصعيد، الإرسال المجدول والإلغاء عند الإغلاق، كل التقارير والنطاقات والتصدير والتدقيق.
+- `phase9_refund_failure.py` (تشغيل B، `Wallet__Fake__RefundFailure=Retryable`): **13/13**.
+- `phase9_settlements.py` (تشغيل C، `Cash.BusinessDayEndHour=-164` حتى «اليوم» يصير 10-18 والأسبوع مغلق، و`Cash.OverdueHour=24`): **26/26** (اثنين منها انعادوا بعد تصليح حساب نطاق التقرير).
+- ⚠️ أثر تشغيل C على قاعدة التطوير: قيدا الدفع (`payout:…` و`driver_payout:…`) بتاريخ تشغيلي **2026-10-18**، ورصيد «بيتزا الفرات» وأرباح السائق 902 صاروا صفر (مدفوعة)، وبقيت كشوف Draft للسائق 901.
+- السكربتات بالمجلد المؤقت: `C:\Users\BESTLA~1\AppData\Local\Temp\claude\E--abp-projects-Saham\ff7f1f2e-ea8f-4495-acf3-4807969264ac\scratchpad\` (`phase8_tests.py` و`phase9_*.py`).
 
 ---
 
 ## 4. حالة git
-- كل شغل المرحلة 8 **غير متكومت** (المستخدم يسوي الكومت). يشمل Migration `20261011111539_Phase8_Ops_Audit_Outbox` (مطبقة على Neon).
-- `M .gitignore` (سطر `appsettings.secrets.json`) و`docs/handoff/` — جاهزة للكومت ويا المرحلة.
+- آخر كومت `93395ed` (المرحلة 8) على `Develop`، ومرفوع لـ `origin/Develop`.
+- `main` المحلي متقدّم لـ `93395ed` (fast-forward)، بس **ما انرفع** لـ GitHub لأن حساب `Mtaki4` المحفوظ بالجهاز ما عنده صلاحية كتابة على `zainabAg/Saham` (403). المستخدم يرفعه بحسابه.
+- كل شغل المرحلة 9 **غير متكومت**، ومعه Migration `20261011122631_Phase9_Payments_Coupons_Settlements` (مطبقة على Neon).
+- `.gitignore` (سطر `appsettings.secrets.json`) بعده **ما متكومت** — مهم يتكومت.
 
 ---
 
@@ -158,16 +161,23 @@
 | براميتر GET اسمه `action` يرجع فارغ | اسم محجوز بـ MVC route values (يصير "GetList") — استخدم اسم ثاني (`operation`) |
 | تحديث عمود «نبض» يلمس `ConcurrencyStamp` والتدقيق | `ExecuteUpdateAsync` على عمود واحد (`TabletPresenceTracker`) + `[DisableAuditing]` |
 | ABP يسجل الـ enums بالتاريخ كأرقام | التحويل لأسماء وقت العرض في `AuditLogAppService.Readable` (يدعم `Nullable<>`) |
+| قراءة جسم الطلب يدوياً (webhook) تكسر الاستجابة: "Cannot access a closed Stream" | `new StreamReader(Request.Body, …, leaveOpen: true)` |
+| webhook مزوّر يحجز معرّف الحدث الحقيقي فيُعامل الحقيقي كمكرر | الحدث بتوقيع خاطئ ينحفظ بمعرّف `invalid_…` جديد |
+| دور `admin` بـ ABP عنده كل الصلاحيات (ومنها الجديدة) | الفصل بين المهام بفحص دور صريح (`IsInRole(Accountant)`) |
+| `OrderType` موجود بـ `Saham.Entities.Pricing` مو `Orders` | استعمل الـ namespace الصح |
 
 ---
 
 ## 8. ملاحظات وأسئلة معلّقة
 
-ماكو قرار معلّق للمرحلة 8. أشياء مؤجلة عن قصد:
-1. **تصدير التقارير وتسجيله بالتدقيق (SRS 5.5)** ← ويا التقارير بالمرحلة 9.
-2. **`FcmPushProvider` + تسجيل أجهزة المستخدمين (device tokens)** ← لحين مفاتيح Firebase.
-3. **حقل اللغة المفضلة للمستخدم (DER-NTF-03)** ← حالياً كل الإشعارات بالعربي.
-4. **سلسلة بصمات التدقيق** ← غير مطبقة بقرار المستخدم (خيار أ).
+ماكو قرار معلّق. مؤجل عن قصد (خارج المرحلة 9 أو ينتظر طرف خارجي):
+1. **مزود محفظة حقيقي (EXT-01)**: يستبدل `FakeWalletProvider` بتطبيق `IWalletProvider`.
+2. **`FcmPushProvider` + أجهزة المستخدمين**: لحين مفاتيح Firebase.
+3. **اللغة المفضلة للمستخدم (DER-NTF-03)**: الإشعارات كلها عربي حالياً.
+4. **القيود التصحيحية (UC-25) ومصاريف التشغيل الشهرية (J-OPERATING-EXPENSE)**: ما انبنت، فـ RPT-04 يعلّم صافي الربح «غير مكتمل».
+5. **اعتماد الإرجاع اليدوي من شخص ثانٍ (BR-056 / SOD-01)**: حالياً المحاسب يسويه مباشرة مع مرجع.
+6. **الشكاوى والتقييمات وRPT-10** (بعد MVP)، و**المكالمة داخل التطبيق**.
+7. **«تحصيل من المطعم» (صافي سالب)**: مكتوب (`MarkCollectedAsync`) بس ما انجرب لأن ماكو مطعم صافيه سالب ببيانات الاختبار.
 
 ### أشياء منفذة بس ما انجربت فعلياً (لازم تنتبه لها)
 - **`NotificationPlanner` لأحداث ما انجربت مباشرة**: `ITEM_UNAVAILABLE`, `ORDER_NOT_RECEIVED`, `CUSTOMER_CASH_BANNED`, `DRIVER_CASH_OVERDUE`, `DRIVER_REVIEWED`, `TASK_RELEASED` — مكتوبة على نفس النمط المختبر، بس ما الها اختبار خاص بعد.

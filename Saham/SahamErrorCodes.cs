@@ -107,4 +107,25 @@ public static class SahamErrorCodes
     public const string IncidentAlreadyResolved = Prefix + "IncidentAlreadyResolved";
     public const string IncidentSubjectRequired = Prefix + "IncidentSubjectRequired";
     public const string NotificationNotDead = Prefix + "NotificationNotDead";
+
+    // Phase 9 - payments, refunds, coupons, settlements, substitutes
+    public const string RefundExceedsPayment = Prefix + "RefundExceedsPayment";
+    public const string InvalidRefundStatus = Prefix + "InvalidRefundStatus";
+    public const string CouponNotFound = Prefix + "CouponNotFound";
+    public const string CouponNotValidNow = Prefix + "CouponNotValidNow";
+    public const string CouponNotForRestaurant = Prefix + "CouponNotForRestaurant";
+    public const string CouponBelowMinSubtotal = Prefix + "CouponBelowMinSubtotal";
+    public const string CouponUsageLimitReached = Prefix + "CouponUsageLimitReached";
+    public const string CouponCodeTaken = Prefix + "CouponCodeTaken";
+    public const string CouponAlreadyUsed = Prefix + "CouponAlreadyUsed";
+    public const string CouponRestaurantRequired = Prefix + "CouponRestaurantRequired";
+    public const string InvalidCouponTerms = Prefix + "InvalidCouponTerms";
+    public const string InvalidCouponStatus = Prefix + "InvalidCouponStatus";
+    public const string InvalidSubstitute = Prefix + "InvalidSubstitute";
+    public const string NoSubstituteProposed = Prefix + "NoSubstituteProposed";
+    public const string LateCancelOnlyAfterAcceptance = Prefix + "LateCancelOnlyAfterAcceptance";
+    public const string InvalidSettlementStatus = Prefix + "InvalidSettlementStatus";
+    public const string SettlementPeriodNotClosed = Prefix + "SettlementPeriodNotClosed";
+    public const string InvalidSettlementPeriod = Prefix + "InvalidSettlementPeriod";
+    public const string UnknownReport = Prefix + "UnknownReport";
 }

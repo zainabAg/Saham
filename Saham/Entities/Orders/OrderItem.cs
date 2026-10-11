@@ -26,6 +26,10 @@ public class OrderItem : Entity<Guid>
 
     public string? RemovedReason { get; private set; }
 
+    /* BR-047 (b): a substitute proposed by the kitchen for this unavailable line (ProposedSubstitute
+     * until the customer accepts it, then Active). */
+    public Guid? SubstituteForItemId { get; private set; }
+
     public DateTime? RemovedAt { get; private set; }
 
     protected OrderItem()
@@ -44,6 +48,18 @@ public class OrderItem : Entity<Guid>
         LineTotal = unitPrice * quantity;
         Status = OrderItemStatus.Active;
     }
+
+    /* ASM-30: a substitute costs the same or less, keeps the quantity of the line it replaces. */
+    internal static OrderItem ProposeSubstitute(Guid id, OrderItem original, Guid menuItemId, I18nText name, long unitPrice)
+    {
+        return new OrderItem(id, original.OrderId, menuItemId, name, unitPrice, original.Quantity)
+        {
+            Status = OrderItemStatus.ProposedSubstitute,
+            SubstituteForItemId = original.Id
+        };
+    }
+
+    internal void ActivateSubstitute() => Status = OrderItemStatus.Active;
 
     internal void ReportUnavailable() => IsReportedUnavailable = true;
 

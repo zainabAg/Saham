@@ -23,6 +23,10 @@ public class CreateQuoteDto
 
     /* UTC; required for scheduled orders. */
     public DateTime? ScheduledFor { get; set; }
+
+    /* One coupon per order (BR-010); checked here, reserved when the order is created. */
+    [StringLength(Entities.Coupons.Coupon.CodeMaxLength)]
+    public string? CouponCode { get; set; }
 }
 
 public class QuoteItemInput
@@ -68,6 +72,11 @@ public class QuoteDto : EntityDto<Guid>
 
     /* "Add X more for free delivery"; null when not applicable. */
     public long? FreeDeliveryRemaining { get; set; }
+
+    public string? CouponCode { get; set; }
+
+    /* The coupon's part of DiscountAmount (K). */
+    public long CouponDiscount { get; set; }
 
     /* T = S − K + Dfee */
     public long TotalAmount { get; set; }

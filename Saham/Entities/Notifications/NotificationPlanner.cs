@@ -151,6 +151,16 @@ public class NotificationPlanner : DomainService
             case OutboxEventTypes.DriverAssigned:
                 plans.Add(Push(customer, "Notify:DriverAssigned", order.Id, false, number));
                 break;
+
+            case OutboxEventTypes.RefundSucceeded:
+                var refunded = Amount(long.TryParse(e.Get("amount"), out var r) ? r : 0);
+                plans.Add(Push(customer, "Notify:RefundSucceeded", order.Id, false, number, refunded));
+                plans.Add(await SmsToCustomerAsync(order, "Notify:RefundSucceeded", number, refunded));
+                break;
+
+            case OutboxEventTypes.RefundFailedFinal:
+                plans.Add(Push(customer, "Notify:RefundInProgress", order.Id, false, number));
+                break;
         }
 
         return plans;
@@ -194,6 +204,11 @@ public class NotificationPlanner : DomainService
 
             case OutboxEventTypes.DriverCashOverdue:
                 plans.Add(Push(e.AggregateId, "Notify:DriverCashOverdue", null, false));
+                break;
+
+            case OutboxEventTypes.DriverPayoutPaid:
+                plans.Add(Push(e.AggregateId, "Notify:DriverPayoutPaid", null, false,
+                    Amount(long.TryParse(e.Get("amount"), out var paid) ? paid : 0)));
                 break;
 
             case OutboxEventTypes.DriverReviewed:

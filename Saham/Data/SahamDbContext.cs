@@ -72,6 +72,14 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
 
     // M10 Notifications
     public DbSet<SmsLog> SmsLogs { get; set; }
+
+    // Phase 9: payments, coupons, settlements
+    public DbSet<Entities.Payments.Payment> Payments { get; set; }
+    public DbSet<Entities.Payments.PaymentEvent> PaymentEvents { get; set; }
+    public DbSet<Entities.Payments.Refund> Refunds { get; set; }
+    public DbSet<Entities.Coupons.Coupon> Coupons { get; set; }
+    public DbSet<Entities.Coupons.CouponRedemption> CouponRedemptions { get; set; }
+    public DbSet<Entities.Settlements.Settlement> Settlements { get; set; }
     public DbSet<OutboxEvent> OutboxEvents { get; set; }
     public DbSet<Notification> Notifications { get; set; }
 
@@ -116,6 +124,9 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
         builder.ConfigureSahamDriversAndDispatch();
         builder.ConfigureSahamLedger();
         builder.ConfigureSahamNotifications();
+        builder.ConfigureSahamPayments();
+        builder.ConfigureSahamCoupons();
+        builder.ConfigureSahamSettlements();
         builder.ConfigureSahamInfrastructure();
     }
 }

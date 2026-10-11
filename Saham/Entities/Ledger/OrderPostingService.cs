@@ -83,6 +83,59 @@ public class OrderPostingService : DomainService
             });
     }
 
+    /* J-CUSTOMER-LATE-CANCEL (BR-045, REC-03) — the customer asked to cancel after acceptance and pays
+     * the food S − K: the restaurant keeps its net, the company its commission, no delivery fee.
+     *   Dr CUSTOMER_PREPAID (wallet, up to what is held) / CUSTOMER_BALANCE[c] (cash, or the rest: a debt) S − K,
+     *   Dr DISCOUNT_EXPENSE K_c;  Cr RESTAURANT_PAYABLE[r] R, Cr COMMISSION C. */
+    public async Task PostCustomerLateCancelAsync(Order order, long prepaidAvailable)
+    {
+        var charge = order.ItemsSubtotal - order.DiscountAmount;
+        var fromPrepaid = Math.Min(charge, Math.Max(0, prepaidAvailable));
+        var date = await _ledger.BusinessDateAsync(Clock.Now, order.CityId);
+        await _ledger.PostAsync(JournalEntryType.CustomerLateCancel, JournalSourceType.Order, order.Id,
+            $"order:{order.Id:N}:late_cancel", $"Order #{order.Number} cancelled late by the customer", date, new[]
+            {
+                (await _ledger.CompanyAccountAsync(A.CustomerPrepaid), fromPrepaid, 0L, (Guid?)order.Id),
+                (await _ledger.PartyAccountAsync(A.CustomerBalance, order.CustomerId), charge - fromPrepaid, 0L, order.Id),
+                (await _ledger.CompanyAccountAsync(A.DiscountExpense), order.CompanyDiscount, 0L, order.Id),
+                (await _ledger.PartyAccountAsync(A.RestaurantPayable, order.RestaurantId), 0L, order.RestaurantNetAmount, order.Id),
+                (await _ledger.CompanyAccountAsync(A.CommissionRevenue), 0L, order.CommissionAmount, order.Id)
+            });
+    }
+
+    /* J-CANCEL-DRIVER-PAY (BR-069, DEC-08) — the driver reached the restaurant before the cancellation and
+     * gets part of his pay, charged to whoever caused it:
+     *   restaurant → Dr RESTAURANT_PAYABLE[r]; customer → Dr CUSTOMER_PREPAID (wallet) / CUSTOMER_BALANCE[c];
+     *   company → Dr DRIVER_PAY_EXPENSE;  Cr DRIVER_PAYABLE[d]. */
+    public async Task PostCancelDriverPayAsync(Order order, Guid driverId, long pay, CancelCause cause, long prepaidAvailable)
+    {
+        if (pay <= 0)
+        {
+            return;
+        }
+
+        var lines = new System.Collections.Generic.List<(Guid, long, long, Guid?)>();
+        switch (cause)
+        {
+            case CancelCause.Restaurant:
+                lines.Add((await _ledger.PartyAccountAsync(A.RestaurantPayable, order.RestaurantId), pay, 0L, order.Id));
+                break;
+            case CancelCause.Customer:
+                var fromPrepaid = Math.Min(pay, Math.Max(0, prepaidAvailable));
+                lines.Add((await _ledger.CompanyAccountAsync(A.CustomerPrepaid), fromPrepaid, 0L, order.Id));
+                lines.Add((await _ledger.PartyAccountAsync(A.CustomerBalance, order.CustomerId), pay - fromPrepaid, 0L, order.Id));
+                break;
+            default:
+                lines.Add((await _ledger.CompanyAccountAsync(A.DriverPayExpense), pay, 0L, order.Id));
+                break;
+        }
+
+        lines.Add((await _ledger.PartyAccountAsync(A.DriverPayable, driverId), 0L, pay, order.Id));
+        await _ledger.PostAsync(JournalEntryType.CancelDriverPay, JournalSourceType.Order, order.Id,
+            $"order:{order.Id:N}:cancel_pay", $"Driver pay for cancelled order #{order.Number} ({cause})",
+            await _ledger.BusinessDateAsync(Clock.Now, order.CityId), lines);
+    }
+
     /* J-CHANGE-SHORTFALL (EX-14) — the driver kept X of the customer's change:
      * Dr DRIVER_CASH[d] X / Cr CUSTOMER_BALANCE[c] X (credit used on the next order). */
     public async Task PostChangeShortfallAsync(Order order, Guid driverId)

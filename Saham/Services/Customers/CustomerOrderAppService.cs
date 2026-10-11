@@ -27,6 +27,7 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
     private readonly DeliveryManager _deliveryManager;
     private readonly IRepository<Driver, Guid> _driverRepository;
     private readonly IRepository<Volo.Abp.Identity.IdentityUser, Guid> _userRepository;
+    private readonly Entities.Payments.PaymentManager _paymentManager;
 
     public CustomerOrderAppService(
         IRepository<Order, Guid> orderRepository,
@@ -34,8 +35,10 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
         OrderDtoMapper mapper,
         DeliveryManager deliveryManager,
         IRepository<Driver, Guid> driverRepository,
-        IRepository<Volo.Abp.Identity.IdentityUser, Guid> userRepository)
+        IRepository<Volo.Abp.Identity.IdentityUser, Guid> userRepository,
+        Entities.Payments.PaymentManager paymentManager)
     {
+        _paymentManager = paymentManager;
         _orderRepository = orderRepository;
         _orderManager = orderManager;
         _mapper = mapper;
@@ -59,6 +62,10 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
             input.RecipientPhone);
 
         await _orderRepository.InsertAsync(order, autoSave: true); // autoSave: the number comes from a DB sequence
+
+        // UC-05: a wallet order opens the provider's payment session; the app sends the customer there.
+        await _paymentManager.StartAsync(order);
+        await _orderRepository.UpdateAsync(order, autoSave: true);
         return await MapAsync(order);
     }
 
@@ -93,7 +100,7 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
         return await MapAsync(order);
     }
 
-    /* Answer to "an item ran out": continue without it, or cancel the order (REQ-CUS-21, MVP). */
+    /* Answer to "an item ran out" (BR-047): continue without it, take the kitchen's substitute, or cancel. */
     [Authorize(SahamPermissions.Orders.ItemDecision)]
     public async Task<CustomerOrderDto> DecideItemsAsync(Guid id, ItemDecisionDto input)
     {

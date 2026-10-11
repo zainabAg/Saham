@@ -29,6 +29,7 @@ public static class SahamSettings
         public const string AverageSpeedKmh = Prefix + ".Orders.AverageSpeedKmh";
         public const string PickupBufferMinutes = Prefix + ".Orders.PickupBufferMinutes";
         public const string ScheduleReleaseMarginMinutes = Prefix + ".Orders.ScheduleReleaseMarginMinutes";
+        public const string ItemDecisionOpsMinutes = Prefix + ".Orders.ItemDecisionOpsMinutes";
     }
 
     public static class Dispatch
@@ -66,6 +67,18 @@ public static class SahamSettings
     public static class Restaurants
     {
         public const string TabletOfflineSeconds = Prefix + ".Restaurants.TabletOfflineSeconds";
+    }
+
+    public static class Payments
+    {
+        public const string WalletEnabled = Prefix + ".Payments.WalletEnabled";
+        public const string RefundRetrySeconds = Prefix + ".Payments.RefundRetrySeconds";
+    }
+
+    public static class Settlements
+    {
+        public const string DriverPayoutDay = Prefix + ".Settlements.DriverPayoutDay";
+        public const string RestaurantWeekStartDay = Prefix + ".Settlements.RestaurantWeekStartDay";
     }
 
     public static class Notifications
