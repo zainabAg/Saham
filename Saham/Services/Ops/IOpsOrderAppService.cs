@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using Saham.Services.Dtos.Drivers;
 using Saham.Services.Dtos.Finance;
+using Saham.Services.Dtos.Ops;
 using Saham.Services.Dtos.Orders;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
@@ -11,6 +12,8 @@ namespace Saham.Services.Ops;
 public interface IOpsOrderAppService : IApplicationService
 {
     Task<PagedResultDto<OpsOrderDto>> GetListAsync(GetOpsOrdersInput input);
+
+    Task<ListResultDto<LiveOrderDto>> GetLiveAsync(GetLiveOrdersInput input);
 
     Task<OpsOrderDto> GetAsync(Guid id);
 

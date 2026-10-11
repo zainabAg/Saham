@@ -1,8 +1,10 @@
-﻿using System;
+using System;
+using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 
 namespace Saham.Entities.Support;
 
+/* DER-OPS-02 incident queue. Stored as strings (D3), so new values are safe to add. */
 public enum IncidentType
 {
     NoDriver = 0,
@@ -15,7 +17,10 @@ public enum IncidentType
     CustomerNotAnswering = 7,
     DeliveredFarFromAddress = 8,
     CashOverdue = 9,
-    CashCapReached = 10
+    CashCapReached = 10,
+    DeliveryCodeSmsFailed = 11,
+    ScheduledRestaurantClosed = 12,
+    Other = 99
 }
 
 public enum IncidentSeverity
@@ -34,9 +39,16 @@ public enum IncidentStatus
 }
 
 /* Something ops must look at (SRS table incidents). The dedupe key (e.g. "NO_DRIVER:{order}")
- * has a partial unique index while not resolved, so the same problem is never opened twice. */
+ * has a partial unique index while not resolved, so the same problem is never opened twice.
+ * DER-OPS-02: each incident shows its status, who handles it, the action taken, a note and when it was closed. */
 public class Incident : CreationAuditedAggregateRoot<Guid>
 {
+    public const int NoteMaxLength = 1024;
+    public const int ResolutionMaxLength = 512;
+
+    /* Financial incidents are also the accountant's queue (DER-OPS-02). */
+    public static readonly IncidentType[] FinancialTypes = { IncidentType.CashOverdue, IncidentType.CashCapReached };
+
     public IncidentType IncidentType { get; private set; }
 
     public IncidentSeverity Severity { get; private set; }
@@ -55,7 +67,13 @@ public class Incident : CreationAuditedAggregateRoot<Guid>
 
     public DateTime? ResolvedAt { get; private set; }
 
+    public Guid? ResolvedBy { get; private set; }
+
+    /* The action taken. */
     public string? Resolution { get; private set; }
+
+    /* Free text kept by ops while following up (calls made, who was told...). */
+    public string? Note { get; private set; }
 
     public string DedupeKey { get; private set; }
 
@@ -65,7 +83,7 @@ public class Incident : CreationAuditedAggregateRoot<Guid>
     }
 
     internal Incident(Guid id, IncidentType type, IncidentSeverity severity, string dedupeKey,
-        Guid? orderId, Guid? driverId, Guid? restaurantId, DateTime now)
+        Guid? orderId, Guid? driverId, Guid? restaurantId, DateTime now, string? note = null)
         : base(id)
     {
         IncidentType = type;
@@ -76,21 +94,74 @@ public class Incident : CreationAuditedAggregateRoot<Guid>
         RestaurantId = restaurantId;
         Status = IncidentStatus.Open;
         OpenedAt = now;
+        SetNote(note);
+        RaiseChanged();
     }
+
+    public bool IsFinancial => Array.IndexOf(FinancialTypes, IncidentType) >= 0;
 
     public void Acknowledge(Guid userId)
     {
         if (Status == IncidentStatus.Open)
         {
             Status = IncidentStatus.Acknowledged;
-            AssignedTo = userId;
+            AssignedTo ??= userId;
+            RaiseChanged();
         }
     }
 
-    public void Resolve(string resolution, DateTime now)
+    /* Hand the incident to a colleague (or take it). */
+    public void AssignTo(Guid userId)
     {
+        EnsureNotResolved();
+        AssignedTo = userId;
+        if (Status == IncidentStatus.Open)
+        {
+            Status = IncidentStatus.Acknowledged;
+        }
+
+        RaiseChanged();
+    }
+
+    public void UpdateNote(string? note)
+    {
+        EnsureNotResolved();
+        SetNote(note);
+        RaiseChanged();
+    }
+
+    public void Resolve(string resolution, Guid? by, DateTime now)
+    {
+        if (Status == IncidentStatus.Resolved)
+        {
+            return;
+        }
+
         Status = IncidentStatus.Resolved;
-        Resolution = resolution;
+        Resolution = Check.NotNullOrWhiteSpace(resolution, nameof(resolution), ResolutionMaxLength);
+        ResolvedBy = by;
         ResolvedAt = now;
+        RaiseChanged();
+    }
+
+    private void SetNote(string? note)
+    {
+        Note = note.IsNullOrWhiteSpace() ? null : Check.Length(note!.Trim(), nameof(note), NoteMaxLength);
+    }
+
+    private void EnsureNotResolved()
+    {
+        if (Status == IncidentStatus.Resolved)
+        {
+            throw new BusinessException(SahamErrorCodes.IncidentAlreadyResolved);
+        }
+    }
+
+    /* Sent to the ops board after commit (IncidentRealtimeNotifier). */
+    private void RaiseChanged()
+    {
+        AddLocalEvent(new IncidentChangedEto(Id, IncidentType, Status, Severity, OrderId));
     }
 }
+
+public record IncidentChangedEto(Guid IncidentId, IncidentType IncidentType, IncidentStatus Status, IncidentSeverity Severity, Guid? OrderId);

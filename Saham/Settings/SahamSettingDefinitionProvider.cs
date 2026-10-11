@@ -55,6 +55,13 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Cash.FloatAmount, "25000");                 // REC-04
         Add(context, SahamSettings.Cash.BusinessDayEndHour, "4");              // ASM-09
 
+        // Restaurants
+        Add(context, SahamSettings.Restaurants.TabletOfflineSeconds, "120");   // DER-OPS-01: tablet pings every 60 s
+
+        // Notifications (REQ-NTF-02: 3 attempts with growing gaps: 30 s, 60 s)
+        Add(context, SahamSettings.Notifications.MaxAttempts, "3");
+        Add(context, SahamSettings.Notifications.RetryBaseSeconds, "30");
+
         // Support
         Add(context, SahamSettings.Support.OpsCompensationLimit, "5000");      // DEC-11
 

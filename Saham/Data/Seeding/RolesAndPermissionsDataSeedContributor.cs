@@ -81,7 +81,9 @@ public class RolesAndPermissionsDataSeedContributor : IDataSeedContributor, ITra
             P.Compensation.Credit,
             P.Reports.Operational,
             P.Incidents.Handle,
-            P.SmsLogs.View
+            P.SmsLogs.View,
+            P.OpsBoard.View,
+            P.Notifications.View, P.Notifications.Retry
         },
         [SahamRoles.Accountant] = new[]
         {
@@ -92,7 +94,8 @@ public class RolesAndPermissionsDataSeedContributor : IDataSeedContributor, ITra
             P.Drivers.PayoutWeekly,
             P.Settlements.View, P.Settlements.GenerateConfirm, P.Settlements.MarkPaid,
             P.Ledger.AdjustmentCreate, P.Ledger.BalancesView,
-            P.Reports.Operational, P.Reports.Financial
+            P.Reports.Operational, P.Reports.Financial,
+            P.Incidents.Handle /* financial incidents only (IncidentAppService) */
         },
         [SahamRoles.Owner] = new[]
         {
@@ -117,7 +120,9 @@ public class RolesAndPermissionsDataSeedContributor : IDataSeedContributor, ITra
             P.Reports.Operational, P.Reports.Financial,
             P.Audit.View,
             P.Incidents.Handle,
-            P.SmsLogs.View
+            P.SmsLogs.View,
+            P.OpsBoard.View,
+            P.Notifications.View, P.Notifications.Retry
         }
     };
 

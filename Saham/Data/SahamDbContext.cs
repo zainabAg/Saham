@@ -72,6 +72,8 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
 
     // M10 Notifications
     public DbSet<SmsLog> SmsLogs { get; set; }
+    public DbSet<OutboxEvent> OutboxEvents { get; set; }
+    public DbSet<Notification> Notifications { get; set; }
 
     // Infrastructure
     public DbSet<IdempotencyRecord> IdempotencyRecords { get; set; }

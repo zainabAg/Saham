@@ -16,4 +16,6 @@ public interface IRestaurantProfileAppService : IApplicationService
     Task<RestaurantProfileDto> PauseAsync(PauseRestaurantDto input, Guid? restaurantId = null);
 
     Task<RestaurantProfileDto> ResumeAsync(Guid? restaurantId = null);
+
+    Task HeartbeatAsync();
 }

@@ -252,43 +252,6 @@ public class AssignDriverDto
     public string Reason { get; set; } = string.Empty;
 }
 
-public class IncidentDto : EntityDto<Guid>
-{
-    public IncidentType IncidentType { get; set; }
-
-    public IncidentSeverity Severity { get; set; }
-
-    public IncidentStatus Status { get; set; }
-
-    public Guid? OrderId { get; set; }
-
-    public Guid? DriverId { get; set; }
-
-    public Guid? RestaurantId { get; set; }
-
-    public Guid? AssignedTo { get; set; }
-
-    public DateTime OpenedAt { get; set; }
-
-    public DateTime? ResolvedAt { get; set; }
-
-    public string? Resolution { get; set; }
-}
-
-public class GetIncidentsInput : PagedResultRequestDto
-{
-    public bool OpenOnly { get; set; } = true;
-
-    public IncidentType? IncidentType { get; set; }
-}
-
-public class ResolveIncidentDto
-{
-    [Required]
-    [StringLength(512)]
-    public string Resolution { get; set; } = string.Empty;
-}
-
 // ------------------------------------------------------------------ driver task actions
 
 /* Every driver action carries the time it happened on the phone, for actions replayed from the

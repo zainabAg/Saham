@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Saham.Entities.Drivers;
+using Saham.Entities.Notifications;
 using Saham.Entities.Support;
 using Saham.Settings;
 using Volo.Abp;
@@ -29,6 +31,8 @@ public class CashManager : DomainService
     private readonly IncidentManager _incidentManager;
     private readonly ISettingProvider _settingProvider;
 
+    private readonly OutboxManager _outbox;
+
     public CashManager(
         LedgerManager ledger,
         IRepository<CashMovement, Guid> movementRepository,
@@ -37,8 +41,10 @@ public class CashManager : DomainService
         IRepository<JournalEntry, Guid> entryRepository,
         IRepository<LedgerAccount, Guid> accountRepository,
         IncidentManager incidentManager,
-        ISettingProvider settingProvider)
+        ISettingProvider settingProvider,
+        OutboxManager outbox)
     {
+        _outbox = outbox;
         _ledger = ledger;
         _movementRepository = movementRepository;
         _driverRepository = driverRepository;
@@ -140,8 +146,14 @@ public class CashManager : DomainService
         driver.BlockCash(DriverCashBlock.Overdue, Clock.Now);
         await _driverRepository.UpdateAsync(driver);
         // One alert per driver per day for the owner and the accountant (BR-066).
-        await _incidentManager.OpenAsync(IncidentType.CashOverdue, IncidentSeverity.High,
+        var incident = await _incidentManager.OpenAsync(IncidentType.CashOverdue, IncidentSeverity.High,
             DeterministicId(driver.Id, today), driverId: driver.Id);
+        if (incident != null)
+        {
+            // DRIVER_CASH_OVERDUE: the driver is told too (I.2-6), once per day.
+            await _outbox.EnqueueAsync(OutboxEventTypes.DriverCashOverdue, OutboxAggregateTypes.Driver, driver.Id,
+                new Dictionary<string, string?> { ["businessDate"] = today.ToString("yyyy-MM-dd") }, today.ToString("yyyyMMdd"));
+        }
     }
 
     /* After a handover: lift what no longer applies. */

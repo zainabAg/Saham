@@ -112,7 +112,10 @@ public static class DriversDispatchConfiguration
             b.Property(x => x.Severity).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
             b.Property(x => x.Status).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
             b.Property(x => x.DedupeKey).IsRequired().HasMaxLength(128);
-            b.Property(x => x.Resolution).HasMaxLength(512);
+            b.Property(x => x.Resolution).HasMaxLength(Incident.ResolutionMaxLength);
+            b.Property(x => x.Note).HasMaxLength(Incident.NoteMaxLength);
+            b.HasIndex(x => x.OrderId);
+            b.HasIndex(x => new { x.AssignedTo, x.Status });
             b.HasIndex(x => x.DedupeKey).IsUnique().HasFilter("\"Status\" <> 'Resolved'")
                 .HasDatabaseName("IX_AppIncidents_OneOpenPerKey");
             b.HasIndex(x => new { x.Status, x.OpenedAt });

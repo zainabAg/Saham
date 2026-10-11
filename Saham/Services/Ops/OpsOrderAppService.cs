@@ -11,12 +11,19 @@ using Saham.Permissions;
 using Saham.Services.Dtos.Drivers;
 using Saham.Services.Dtos.Finance;
 using Saham.Entities.Support;
+using Saham.Services.Dtos.Ops;
 using Saham.Services.Dtos.Orders;
+using Saham.Entities.Notifications;
+using Saham.Entities.Restaurants;
+using Saham.Settings;
+using System.Collections.Generic;
+using IdentityUser = Volo.Abp.Identity.IdentityUser;
 using Saham.Services.Orders;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Authorization;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Settings;
 using Volo.Abp.Users;
 
 namespace Saham.Services.Ops;
@@ -33,6 +40,11 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
     private readonly DispatchManager _dispatchManager;
     private readonly DeliveryManager _deliveryManager;
     private readonly IRepository<ContactAttempt, Guid> _contactRepository;
+    private readonly IRepository<DeliveryAssignment, Guid> _assignmentRepository;
+    private readonly IRepository<Incident, Guid> _incidentRepository;
+    private readonly IRepository<Notification, Guid> _notificationRepository;
+    private readonly IRepository<Restaurant, Guid> _restaurantRepository;
+    private readonly IRepository<IdentityUser, Guid> _userRepository;
 
     public OpsOrderAppService(
         IRepository<Order, Guid> orderRepository,
@@ -40,8 +52,18 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
         OrderDtoMapper mapper,
         DispatchManager dispatchManager,
         DeliveryManager deliveryManager,
-        IRepository<ContactAttempt, Guid> contactRepository)
+        IRepository<ContactAttempt, Guid> contactRepository,
+        IRepository<DeliveryAssignment, Guid> assignmentRepository,
+        IRepository<Incident, Guid> incidentRepository,
+        IRepository<Notification, Guid> notificationRepository,
+        IRepository<Restaurant, Guid> restaurantRepository,
+        IRepository<IdentityUser, Guid> userRepository)
     {
+        _assignmentRepository = assignmentRepository;
+        _incidentRepository = incidentRepository;
+        _notificationRepository = notificationRepository;
+        _restaurantRepository = restaurantRepository;
+        _userRepository = userRepository;
         _deliveryManager = deliveryManager;
         _contactRepository = contactRepository;
         _orderRepository = orderRepository;
@@ -69,6 +91,85 @@ public class OpsOrderAppService : SahamAppService, IOpsOrderAppService
             .Take(input.MaxResultCount));
 
         return new PagedResultDto<OpsOrderDto>(totalCount, await _mapper.ToOpsAsync(orders, includeHistory: false));
+    }
+
+    /* REQ-OPS-01 / BR-058: every order in progress with its restaurant, driver, age and time left,
+     * flagged when it is late or needs someone to act; those come first. The board refreshes on
+     * "orderChanged" / "incidentChanged" from OrdersHub. */
+    public async Task<ListResultDto<LiveOrderDto>> GetLiveAsync(GetLiveOrdersInput input)
+    {
+        await CheckCompanyStaffAsync();
+
+        var now = Clock.Now;
+        var lateThreshold = await SettingProvider.GetAsync<int>(SahamSettings.Orders.LateThresholdMinutes);
+        var alertBefore = now.AddMinutes(-await SettingProvider.GetAsync<int>(SahamSettings.Orders.RestaurantAlertMinutes));
+
+        var orders = await AsyncExecuter.ToListAsync((await _orderRepository.GetQueryableAsync())
+            .Where(o => o.Status == OrderStatus.Placed || o.Status == OrderStatus.Accepted ||
+                        o.Status == OrderStatus.Ready || o.Status == OrderStatus.PickedUp)
+            .WhereIf(input.RestaurantId.HasValue, o => o.RestaurantId == input.RestaurantId));
+        var ids = orders.Select(o => o.Id).ToList();
+
+        var assignments = (await _assignmentRepository.GetListAsync(a => ids.Contains(a.OrderId) &&
+                (a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.PickedUp)))
+            .GroupBy(a => a.OrderId).ToDictionary(g => g.Key, g => g.First().DriverId);
+        var incidents = (await _incidentRepository.GetListAsync(i => i.OrderId != null && ids.Contains(i.OrderId.Value) &&
+                i.Status != IncidentStatus.Resolved))
+            .ToLookup(i => i.OrderId!.Value, i => i.IncidentType);
+        var failedNotifications = (await AsyncExecuter.ToListAsync((await _notificationRepository.GetQueryableAsync())
+            .Where(n => n.OrderId != null && ids.Contains(n.OrderId.Value) &&
+                        n.Status == NotificationStatus.Dead && n.Channel == NotificationChannel.Sms)
+            .Select(n => n.OrderId!.Value))).ToHashSet();
+
+        var restaurantIds = orders.Select(o => o.RestaurantId).Distinct().ToList();
+        var restaurants = (await _restaurantRepository.GetListAsync(r => restaurantIds.Contains(r.Id), includeDetails: false))
+            .ToDictionary(r => r.Id, r => r.Name.Ar);
+        var driverIds = assignments.Values.Distinct().ToList();
+        var drivers = (await _userRepository.GetListAsync(u => driverIds.Contains(u.Id)))
+            .ToDictionary(u => u.Id, u => u.Name ?? u.UserName);
+
+        var live = orders.Select(o =>
+            {
+                Guid? driverId = assignments.TryGetValue(o.Id, out var d) ? d : null;
+                var dto = new LiveOrderDto
+                {
+                    Id = o.Id,
+                    Number = o.Number,
+                    Status = o.Status,
+                    HoldReason = o.HoldReason,
+                    DispatchStatus = o.DispatchStatus,
+                    RestaurantId = o.RestaurantId,
+                    RestaurantName = restaurants.GetValueOrDefault(o.RestaurantId, string.Empty),
+                    DriverId = driverId,
+                    DriverName = driverId.HasValue ? drivers.GetValueOrDefault(driverId.Value) : null,
+                    PaymentMethod = o.PaymentMethod,
+                    AmountDue = o.AmountDue,
+                    PlacedAt = o.PlacedAt,
+                    AgeMinutes = (int)Math.Floor((now - (o.PlacedAt ?? o.CreationTime)).TotalMinutes),
+                    EtaMaxAt = o.EtaMaxAt,
+                    RemainingMinutes = (int)Math.Floor((o.EtaMaxAt - now).TotalMinutes),
+                    IsLate = now > o.EtaMaxAt.AddMinutes(lateThreshold),
+                    OpenIncidents = incidents[o.Id].Distinct().ToList()
+                };
+
+                var reasons = dto.AttentionReasons;
+                if (dto.IsLate) reasons.Add(AttentionReasons.Late);
+                if (o.HoldReason.HasValue) reasons.Add(AttentionReasons.OnHold);
+                if (o.Status == OrderStatus.Placed && o.PlacedAt <= alertBefore) reasons.Add(AttentionReasons.WaitingForRestaurant);
+                if (dto.OpenIncidents.Contains(IncidentType.NoDriver)) reasons.Add(AttentionReasons.NoDriver);
+                if (o.OtpLocked) reasons.Add(AttentionReasons.DeliveryCodeLocked);
+                if (failedNotifications.Contains(o.Id)) reasons.Add(AttentionReasons.NotificationFailed);
+                if (dto.OpenIncidents.Count > 0) reasons.Add(AttentionReasons.OpenIncident);
+                dto.NeedsAttention = reasons.Count > 0;
+                return dto;
+            })
+            .Where(o => !input.AttentionOnly || o.NeedsAttention)
+            .OrderByDescending(o => o.NeedsAttention)
+            .ThenByDescending(o => o.IsLate)
+            .ThenBy(o => o.RemainingMinutes)
+            .ToList();
+
+        return new ListResultDto<LiveOrderDto>(live);
     }
 
     public async Task<OpsOrderDto> GetAsync(Guid id)

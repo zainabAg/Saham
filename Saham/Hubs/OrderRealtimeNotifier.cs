@@ -12,7 +12,7 @@ namespace Saham.Hubs;
 /* Pushes order changes to the restaurant, the customer and ops — only after the transaction
  * commits, so nobody is told about a change that was rolled back. Several events of the same
  * order in one transaction are sent once. Delivery here is best effort; durable notifications
- * (push / SMS with retries) come with the outbox in phase 8. */
+ * (push / SMS with retries) go through the outbox (OrderOutboxEventHandler → NotificationDispatchWorker). */
 public class OrderRealtimeNotifier : ILocalEventHandler<OrderChangedEto>, ITransientDependency
 {
     public const string MethodName = "orderChanged";

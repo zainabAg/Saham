@@ -2,23 +2,21 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Localization;
+using System.Collections.Generic;
 using System.Linq;
 using Saham.Entities.Customers;
 using Saham.Entities.Drivers;
+using Saham.Entities.Notifications;
 using Saham.Entities.Orders;
 using Saham.Entities.Restaurants;
 using Saham.Entities.Shared;
 using Saham.Entities.Support;
-using Saham.Localization;
 using Saham.Settings;
 using Volo.Abp;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Domain.Services;
 using Volo.Abp.Security.Encryption;
 using Volo.Abp.Settings;
-using Volo.Abp.Sms;
-using IdentityUser = Volo.Abp.Identity.IdentityUser;
 
 namespace Saham.Entities.Dispatch;
 
@@ -36,12 +34,10 @@ public class DeliveryManager : DomainService
     private readonly IRepository<DeliveryAssignment, Guid> _assignmentRepository;
     private readonly IRepository<Driver, Guid> _driverRepository;
     private readonly IRepository<Restaurant, Guid> _restaurantRepository;
-    private readonly IRepository<IdentityUser, Guid> _userRepository;
     private readonly IncidentManager _incidentManager;
-    private readonly ISmsSender _smsSender;
+    private readonly OutboxManager _outbox;
     private readonly IStringEncryptionService _encryption;
     private readonly ISettingProvider _settingProvider;
-    private readonly IStringLocalizer<SahamResource> _localizer;
     private readonly IRepository<ContactAttempt, Guid> _contactRepository;
     private readonly IRepository<CustomerProfile, Guid> _customerProfileRepository;
 
@@ -50,12 +46,10 @@ public class DeliveryManager : DomainService
         IRepository<DeliveryAssignment, Guid> assignmentRepository,
         IRepository<Driver, Guid> driverRepository,
         IRepository<Restaurant, Guid> restaurantRepository,
-        IRepository<IdentityUser, Guid> userRepository,
         IncidentManager incidentManager,
-        ISmsSender smsSender,
+        OutboxManager outbox,
         IStringEncryptionService encryption,
         ISettingProvider settingProvider,
-        IStringLocalizer<SahamResource> localizer,
         IRepository<ContactAttempt, Guid> contactRepository,
         IRepository<CustomerProfile, Guid> customerProfileRepository)
     {
@@ -65,12 +59,10 @@ public class DeliveryManager : DomainService
         _assignmentRepository = assignmentRepository;
         _driverRepository = driverRepository;
         _restaurantRepository = restaurantRepository;
-        _userRepository = userRepository;
         _incidentManager = incidentManager;
-        _smsSender = smsSender;
+        _outbox = outbox;
         _encryption = encryption;
         _settingProvider = settingProvider;
-        _localizer = localizer;
     }
 
     /* EX-01: a device time is accepted if it is not before the previous step and not later than
@@ -123,13 +115,8 @@ public class DeliveryManager : DomainService
             _encryption.Encrypt(code)!,
             GuidGenerator.Create);
         assignment.MarkPickedUp(by, eventTime);
-
-        var restaurant = await _restaurantRepository.GetAsync(order.RestaurantId, includeDetails: false);
-        var phone = order.RecipientPhone ?? (await _userRepository.GetAsync(order.CustomerId)).PhoneNumber;
-        if (!phone.IsNullOrWhiteSpace())
-        {
-            await _smsSender.SendAsync(new SmsMessage(phone!, _localizer["Sms:DeliveryCode", restaurant.Name.Ar, order.Number, code]));
-        }
+        // The SMS with the code goes through the notification queue (ORDER_PICKED_UP → NotificationPlanner),
+        // with retries and an incident if it finally fails (REQ-NTF-02).
     }
 
     /* BR-074: the cashier's "handed to the driver". If the driver has not recorded the pickup
@@ -253,8 +240,15 @@ public class DeliveryManager : DomainService
             profile = await _customerProfileRepository.InsertAsync(new CustomerProfile(order.CustomerId));
         }
 
+        var wasCashDisabled = profile.CashDisabled;
         profile.RegisterNoShow(await _settingProvider.GetAsync<int>(SahamSettings.Delivery.NoShowCashBanThreshold), now);
         await _customerProfileRepository.UpdateAsync(profile);
+        if (profile.CashDisabled && !wasCashDisabled)
+        {
+            // CUSTOMER_CASH_BANNED: push + SMS to the customer (I.2-6).
+            await _outbox.EnqueueAsync(OutboxEventTypes.CustomerCashBanned, OutboxAggregateTypes.Customer, order.CustomerId,
+                new Dictionary<string, string?> { ["orderId"] = order.Id.ToString() }, order.Id.ToString("N"));
+        }
         await _incidentManager.AutoResolveAsync(IncidentType.CustomerNotAnswering, order.Id, "NOT_RECEIVED");
     }
 

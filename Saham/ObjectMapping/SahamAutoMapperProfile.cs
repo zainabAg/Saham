@@ -12,6 +12,7 @@ using Saham.Services.Dtos.Customers;
 using Saham.Services.Dtos.Restaurants;
 using Saham.Services.Dtos.Shared;
 using Saham.Services.Dtos.Admin;
+using Saham.Services.Dtos.Ops;
 using Volo.Abp.AutoMapper;
 using IdentityUser = Volo.Abp.Identity.IdentityUser;
 
@@ -61,7 +62,12 @@ public class SahamAutoMapperProfile : Profile
             .Ignore(d => d.LastLocation)
             .Ignore(d => d.Documents);
         CreateMap<DriverDocument, DriverDocumentDto>();
-        CreateMap<Incident, IncidentDto>();
+        CreateMap<Incident, IncidentDto>()
+            .Ignore(d => d.OrderNumber)
+            .Ignore(d => d.DriverName)
+            .Ignore(d => d.RestaurantName)
+            .Ignore(d => d.AssignedToName);
+        CreateMap<Notification, NotificationDto>();
         /* Create your AutoMapper object mappings here */
     }
 }

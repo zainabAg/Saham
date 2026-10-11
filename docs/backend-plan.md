@@ -299,10 +299,13 @@ amount_due = T + debt_collected − credit_applied
 - [x] `LedgerCustomerBalanceProvider` بدل الصفر: الدين والرصيد يظهران في عرض السعر تلقائياً.
 - [ ] الدفع بالمحفظة وقيوده (`J-WALLET-*`) والاسترداد ← إضافات المرحلة 9. الكشوف الرسمية ودفع أرباح الخميس ← المرحلة 9.
 
-### المرحلة 8 — لوحة العمليات والإدارة والتدقيق (يوم 5)
-- [ ] `OpsOrderAppService.GetLive`, `GetDriversMap`، `IncidentAppService` (فتح/إقرار/حل، `DedupeKey`)، `OpsHub`.
-- [ ] عرض سجل التدقيق (`Saham.Audit.View`) فوق جداول ABP Audit Logging، مع `reason` لكل فعل ✱.
-- [ ] `NotificationDispatchWorker` (Outbox → SignalR/Push/SMS log مع إعادة المحاولة).
+### المرحلة 8 — لوحة العمليات والإدارة والتدقيق (يوم 5) ✅
+- [x] لوحة العمليات (`Saham.OpsBoard.View`): `OpsOrderAppService.GetLive` (العمر، الوقت المتبقي، `IsLate`، `NeedsAttention` وأسبابها)، `OpsDriverAppService.GetMap` (متاح / في مهمة / موقعه قديم / غير متصل)، `OpsRestaurantAppService.GetStatus` (مفتوح / مغلق مؤقتاً / خارج الدوام / تابلت غير متصل + المنتظر للرد) + نبض التابلت `RestaurantProfile/Heartbeat` (`TabletPresenceTracker`).
+- [x] `IncidentAppService`: فتح يدوي، إقرار، إسناد، ملاحظة، حل (مع `ResolvedBy`)، فلاتر، ترتيب الخطورة الصحيح، والمحاسب يرى الحوادث المالية فقط. الإرسال الفوري `incidentChanged` لمجموعة `ops` (و`finance` للمالية) عبر `OrdersHub` بدل `OpsHub` منفصل.
+- [x] الحوادث الناقصة: `RestaurantNoResponse` (BR-023)، `OrderLate` + إشعار الزبون (BR-058)، `ItemDecisionTimeout`، `RestaurantCancelledAccepted`، `ScheduledRestaurantClosed`، `DeliveryCodeSmsFailed`؛ الإغلاق الآلي عند القبول/الانتهاء (`IncidentOrderEventHandler`، `OpenOnceAsync`).
+- [x] سجل التدقيق (`Saham.Audit.View`، المالك فقط) فوق جداول ABP: `AuditLogAppService.GetList` (مستخدم، كيان، فترة، عملية) و`GetEntityHistory`، قبل/بعد بأسماء الـ enums، و`Reason` + `ActorRoles` لكل طلب عبر `SahamAuditLogContributor`. التاريخ يشمل المستخدمين والأدوار والصلاحيات والإعدادات (BR-055).
+- [x] الـ Outbox والإشعارات (I-6): `OutboxEvent` + `Notification` (UK `EventKey, Channel, UserId`)، `NotificationPlanner` (مصفوفة I.2-6)، `NotificationSender` (3 محاولات بفواصل متزايدة ثم `Dead`)، `NotificationDispatchWorker`، `IPushSender` + `LoggingPushSender`، SMS الرمز صار عبر الطابور، و`NotificationAppService` للفاشلة مع إعادة الإرسال.
+- [ ] تصدير التقارير وتسجيله بالتدقيق (SRS 5.5) ← مع التقارير بالمرحلة 9. سلسلة البصمات `prev_hash/hash` غير مطبقة (قرار: الاكتفاء بجداول ABP). `FcmPushProvider` وتسجيل الأجهزة لحين توفر مفاتيح Firebase.
 
 ### المرحلة 9 — الإضافات (بالترتيب، إن بقي وقت)
 1. الدفع بالمحفظة + `FakeWalletProvider` + webhook + الاسترداد الآلي (`RefundWorker`).

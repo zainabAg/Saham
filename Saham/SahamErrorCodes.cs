@@ -102,4 +102,9 @@ public static class SahamErrorCodes
     public const string ChangeShortfallTooLarge = Prefix + "ChangeShortfallTooLarge";
     public const string ContactAttemptRequired = Prefix + "ContactAttemptRequired";
     public const string FloatReturnTooLarge = Prefix + "FloatReturnTooLarge";
+
+    // Phase 8 - ops board, incidents, notifications
+    public const string IncidentAlreadyResolved = Prefix + "IncidentAlreadyResolved";
+    public const string IncidentSubjectRequired = Prefix + "IncidentSubjectRequired";
+    public const string NotificationNotDead = Prefix + "NotificationNotDead";
 }

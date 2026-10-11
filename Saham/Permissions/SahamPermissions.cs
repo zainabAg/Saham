@@ -173,4 +173,19 @@ public static class SahamPermissions
         public const string Default = GroupName + ".SmsLogs";
         public const string View = Default + ".View";
     }
+
+    /* Phase 8: the ops board (live orders, drivers map, restaurants) — REQ-OPS-01/02, DER-OPS-01. */
+    public static class OpsBoard
+    {
+        public const string Default = GroupName + ".OpsBoard";
+        public const string View = Default + ".View";
+    }
+
+    /* Phase 8: the notification queue (SRS I-6) — failed messages and a manual retry. */
+    public static class Notifications
+    {
+        public const string Default = GroupName + ".Notifications";
+        public const string View = Default + ".View";
+        public const string Retry = Default + ".Retry";
+    }
 }

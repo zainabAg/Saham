@@ -9,6 +9,7 @@ using Saham.Permissions;
 using Saham.Services.Dtos.Restaurants;
 using Saham.Settings;
 using Volo.Abp;
+using Volo.Abp.Auditing;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Settings;
 
@@ -24,15 +25,31 @@ public class RestaurantProfileAppService : SahamAppService, IRestaurantProfileAp
     private readonly IRepository<Restaurant, Guid> _restaurantRepository;
     private readonly IRepository<City, Guid> _cityRepository;
     private readonly ICurrentScope _currentScope;
+    private readonly TabletPresenceTracker _tabletPresence;
 
     public RestaurantProfileAppService(
         IRepository<Restaurant, Guid> restaurantRepository,
         IRepository<City, Guid> cityRepository,
-        ICurrentScope currentScope)
+        ICurrentScope currentScope,
+        TabletPresenceTracker tabletPresence)
     {
         _restaurantRepository = restaurantRepository;
         _cityRepository = cityRepository;
         _currentScope = currentScope;
+        _tabletPresence = tabletPresence;
+    }
+
+    /* The tablet calls this every minute so ops see when it goes offline (DER-OPS-01).
+     * Not audited: it is a liveness signal, not a change. */
+    [DisableAuditing]
+    public async Task HeartbeatAsync()
+    {
+        if (!await _currentScope.IsRestaurantStaffAsync())
+        {
+            throw new Volo.Abp.Authorization.AbpAuthorizationException();
+        }
+
+        await _tabletPresence.MarkSeenAsync(await _currentScope.GetRestaurantIdAsync());
     }
 
     public async Task<RestaurantProfileDto> GetAsync(Guid? restaurantId = null)

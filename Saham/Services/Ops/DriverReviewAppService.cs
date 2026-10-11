@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Saham.Entities.Drivers;
+using Saham.Entities.Notifications;
 using Saham.Permissions;
 using Saham.Services.Dtos.Drivers;
 using Saham.Services.Dtos.Shared;
@@ -27,13 +28,16 @@ public class DriverReviewAppService : SahamAppService, IDriverReviewAppService
     private readonly IRepository<DriverDocument, Guid> _documentRepository;
     private readonly IRepository<IdentityUser, Guid> _userRepository;
     private readonly DriverManager _driverManager;
+    private readonly OutboxManager _outbox;
 
     public DriverReviewAppService(
         IRepository<Driver, Guid> driverRepository,
         IRepository<DriverDocument, Guid> documentRepository,
         IRepository<IdentityUser, Guid> userRepository,
-        DriverManager driverManager)
+        DriverManager driverManager,
+        OutboxManager outbox)
     {
+        _outbox = outbox;
         _driverRepository = driverRepository;
         _documentRepository = documentRepository;
         _userRepository = userRepository;
@@ -89,6 +93,7 @@ public class DriverReviewAppService : SahamAppService, IDriverReviewAppService
         driver.Approve(CurrentUser.GetId(), Clock.Now);
 
         await _driverRepository.UpdateAsync(driver);
+        await NotifyReviewedAsync(driver, approved: true, note: null);
         return await GetAsync(id);
     }
 
@@ -99,7 +104,16 @@ public class DriverReviewAppService : SahamAppService, IDriverReviewAppService
         driver.Reject(input.Reason, Clock.Now);
 
         await _driverRepository.UpdateAsync(driver);
+        await NotifyReviewedAsync(driver, approved: false, note: input.Reason);
         return await GetAsync(id);
+    }
+
+    /* DRIVER_REVIEWED: push + SMS to the applicant (I.2-6). */
+    private Task NotifyReviewedAsync(Driver driver, bool approved, string? note)
+    {
+        return _outbox.EnqueueAsync(OutboxEventTypes.DriverReviewed, OutboxAggregateTypes.Driver, driver.Id,
+            new Dictionary<string, string?> { ["approved"] = approved.ToString(), ["note"] = note },
+            GuidGenerator.Create().ToString("N"));
     }
 
     /* Suspended drivers get no new offers; orders already in hand continue. */

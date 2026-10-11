@@ -55,6 +55,7 @@ using Volo.Abp.Studio.Client.AspNetCore;
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Saham.BackgroundWorkers;
+using Saham.Infrastructure.Auditing;
 using Saham.Entities.Identity;
 using Saham.Entities.Notifications;
 using Saham.Entities.Restaurants;
@@ -219,6 +220,13 @@ public class SahamModule : AbpModule
         ConfigureClock();
         ConfigureJson();
         ConfigureEntityChanges();
+        ConfigureNotifications(configuration);
+    }
+
+    /* "Notifications" section: test-only switches for the notification queue (NotificationOptions). */
+    private void ConfigureNotifications(IConfiguration configuration)
+    {
+        Configure<NotificationOptions>(configuration.GetSection("Notifications"));
     }
 
     /* ABP would otherwise "touch" (ConcurrencyStamp, LastModificationTime) an aggregate whenever a
@@ -378,7 +386,12 @@ public class SahamModule : AbpModule
         var excluded = new[] { typeof(OtpChallenge), typeof(SmsLog), typeof(IdempotencyRecord), typeof(Quote),
             typeof(OrderStatusHistory) /* already an audit trail of its own */,
             typeof(DriverLocation), typeof(DeliveryOffer) /* high volume; offers are their own log */,
-            typeof(JournalEntry), typeof(JournalLine), typeof(LedgerAccount) /* the ledger is immutable and is its own audit trail */ };
+            typeof(JournalEntry), typeof(JournalLine), typeof(LedgerAccount) /* the ledger is immutable and is its own audit trail */,
+            typeof(OutboxEvent), typeof(Notification) /* message queues, high volume */ };
+
+        /* BR-055 also covers users and roles, permissions and settings, which live in ABP's modules. */
+        var platform = new[] { typeof(Volo.Abp.Identity.IdentityUser), typeof(Volo.Abp.Identity.IdentityRole),
+            typeof(Volo.Abp.PermissionManagement.PermissionGrant), typeof(Volo.Abp.SettingManagement.Setting) };
 
         Configure<AbpAuditingOptions>(options =>
         {
@@ -387,6 +400,8 @@ public class SahamModule : AbpModule
                 type => type.Namespace != null &&
                         type.Namespace.StartsWith("Saham.Entities") &&
                         !excluded.Contains(type)));
+            options.EntityHistorySelectors.Add(new NamedTypeSelector("SahamPlatformEntities", type => platform.Contains(type)));
+            options.Contributors.Add(new SahamAuditLogContributor());
         });
     }
     
@@ -653,5 +668,6 @@ public class SahamModule : AbpModule
         await context.AddBackgroundWorkerAsync<DispatchWorker>();
         await context.AddBackgroundWorkerAsync<DriverStaleWorker>();
         await context.AddBackgroundWorkerAsync<CashOverdueWorker>();
+        await context.AddBackgroundWorkerAsync<NotificationDispatchWorker>();
     }
 }

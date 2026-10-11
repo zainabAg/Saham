@@ -10,7 +10,7 @@ namespace Saham.Hubs;
 
 /* Tells a driver about a new / cancelled offer and an assigned / released task, after commit.
  * Drivers are connected to OrdersHub and addressed by their user id. Push notifications for
- * a closed app come with the outbox in phase 8. */
+ * a closed app go through the outbox (DriverOutboxEventHandler). */
 public class DriverRealtimeNotifier : ILocalEventHandler<DriverNotificationEto>, ITransientDependency
 {
     public const string MethodName = "driverEvent";

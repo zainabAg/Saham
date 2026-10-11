@@ -112,6 +112,13 @@ public class SahamPermissionDefinitionProvider : PermissionDefinitionProvider
 
         AddGroup(myGroup, SahamPermissions.SmsLogs.Default,
             SahamPermissions.SmsLogs.View);
+
+        AddGroup(myGroup, SahamPermissions.OpsBoard.Default,
+            SahamPermissions.OpsBoard.View);
+
+        AddGroup(myGroup, SahamPermissions.Notifications.Default,
+            SahamPermissions.Notifications.View,
+            SahamPermissions.Notifications.Retry);
     }
 
     /* Adds a parent permission with its children; display names are "Permission:<name>". */

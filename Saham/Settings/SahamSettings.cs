@@ -63,6 +63,17 @@ public static class SahamSettings
         public const string BusinessDayEndHour = Prefix + ".Cash.BusinessDayEndHour";
     }
 
+    public static class Restaurants
+    {
+        public const string TabletOfflineSeconds = Prefix + ".Restaurants.TabletOfflineSeconds";
+    }
+
+    public static class Notifications
+    {
+        public const string MaxAttempts = Prefix + ".Notifications.MaxAttempts";
+        public const string RetryBaseSeconds = Prefix + ".Notifications.RetryBaseSeconds";
+    }
+
     public static class Support
     {
         public const string OpsCompensationLimit = Prefix + ".Support.OpsCompensationLimit";
