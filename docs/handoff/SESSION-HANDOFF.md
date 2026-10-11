@@ -70,6 +70,7 @@
 | الإلغاء على المتسبب | `CancelCause` + `OpsCancelOrderDto.Cause` (Company / Restaurant / Customer)، `CancelReason.CustomerLateCancel` |
 | التقارير | `Services/Reports/ReportAppService.cs` (`GET /api/app/report?report=N&from=&to=`, `POST /api/app/report/export` → xlsx)، حزمة `MiniExcel` |
 | المجدول | `ScheduledReleaseWorker` + `OrderSweeper` (الحلقة المشتركة لمؤقتات الطلب) |
+| المكالمة داخل التطبيق (البند 8) | `Entities/Support/VoiceCallManager.cs`، `ContactAttempt` (+ `AnsweredAt`, `EndedAt`, `DurationSeconds`, نتيجة `Ringing`)، `Services/Calls/CallAppService.cs`، `DriverTask/CallCustomer` + `RequestOpsCall`، `OrdersHub.SendCallSignal` (`callSignal`) + `CallNotifier` (`callEvent`)، `Hubs/UserPresenceTracker.cs`، `Integrations/Calls/IceServerProvider.cs` (قسم `Calls` بالإعدادات: `StunUrls`, `TurnUrls`, `TurnSharedSecret`)، `CallTimeoutWorker`، Migration `Phase9b_InAppCalls` (تعبئة `EndedAt` للمحاولات القديمة) |
 | إعدادات جديدة | `Saham.Payments.WalletEnabled`، `Saham.Payments.RefundRetrySeconds` (`60,300,900,3600,10800`)، `Saham.Settlements.DriverPayoutDay` (Thursday)، `Saham.Settlements.RestaurantWeekStartDay` (Saturday)، `Saham.Orders.ItemDecisionOpsMinutes` (5) |
 | إعدادات تطبيق (appsettings) | قسم `Wallet:Fake` (`WebhookSecret`, `PayPageBaseUrl`, `EnablePayPage`, `RefundFailure` = None/Retryable/Final للاختبار) |
 
@@ -83,6 +84,7 @@
 ### نتيجة التحقق على Neon
 - `phase9_tests.py` (تشغيل A): **75/75** — الكوبونات، المحفظة (توقيع خاطئ، مكرر، مبلغ خاطئ، قبض متأخر، انتهاء، استعلام صامت)، الاسترداد الناجح والإشعار، البديل واسترداد الفرق، الإلغاء المتأخر (محفظة وكاش ودين يُحصّل لاحقاً)، أجر السائق عند الإلغاء، التصعيد، الإرسال المجدول والإلغاء عند الإغلاق، كل التقارير والنطاقات والتصدير والتدقيق.
 - `phase9_refund_failure.py` (تشغيل B، `Wallet__Fake__RefundFailure=Retryable`): **13/13**.
+- `phase9_calls.py` (`Calls.RingTimeoutSeconds=10`، اتصالا SignalR حقيقيان للزبون والسائق + متطفل): **26/26** — بلا رقم بأي استجابة أو حدث، الإشارة للطرف الآخر فقط، رد/رفض/إنهاء/انتهاء الرنين، تطبيق مغلق ← 409، لا مكالمة بعد انتهاء المهمة. وأعيد `phase9_tests.py` كاملاً بعدها (77 فحص، كلها ناجحة).
 - `phase9_settlements.py` (تشغيل C، `Cash.BusinessDayEndHour=-164` حتى «اليوم» يصير 10-18 والأسبوع مغلق، و`Cash.OverdueHour=24`): **26/26** (اثنين منها انعادوا بعد تصليح حساب نطاق التقرير).
 - ⚠️ أثر تشغيل C على قاعدة التطوير: قيدا الدفع (`payout:…` و`driver_payout:…`) بتاريخ تشغيلي **2026-10-18**، ورصيد «بيتزا الفرات» وأرباح السائق 902 صاروا صفر (مدفوعة)، وبقيت كشوف Draft للسائق 901.
 - السكربتات بالمجلد المؤقت: `C:\Users\BESTLA~1\AppData\Local\Temp\claude\E--abp-projects-Saham\ff7f1f2e-ea8f-4495-acf3-4807969264ac\scratchpad\` (`phase8_tests.py` و`phase9_*.py`).
@@ -165,6 +167,7 @@
 | webhook مزوّر يحجز معرّف الحدث الحقيقي فيُعامل الحقيقي كمكرر | الحدث بتوقيع خاطئ ينحفظ بمعرّف `invalid_…` جديد |
 | دور `admin` بـ ABP عنده كل الصلاحيات (ومنها الجديدة) | الفصل بين المهام بفحص دور صريح (`IsInRole(Accountant)`) |
 | `OrderType` موجود بـ `Saham.Entities.Pricing` مو `Orders` | استعمل الـ namespace الصح |
+| تشغيل اختبار ينقطع بالنص يخلي «بيتزا الفرات» موقوفاً مؤقتاً | تأكد من `IsPaused` قبل إعادة الاختبار، أو استأنف المطعم |
 
 ---
 
@@ -176,7 +179,8 @@
 3. **اللغة المفضلة للمستخدم (DER-NTF-03)**: الإشعارات كلها عربي حالياً.
 4. **القيود التصحيحية (UC-25) ومصاريف التشغيل الشهرية (J-OPERATING-EXPENSE)**: ما انبنت، فـ RPT-04 يعلّم صافي الربح «غير مكتمل».
 5. **اعتماد الإرجاع اليدوي من شخص ثانٍ (BR-056 / SOD-01)**: حالياً المحاسب يسويه مباشرة مع مرجع.
-6. **الشكاوى والتقييمات وRPT-10** (بعد MVP)، و**المكالمة داخل التطبيق**.
+6. **الشكاوى والتقييمات وRPT-10، المناطق المغلقة، تغيير عنوان التسليم** (بعد MVP حسب الملحق C §3). المكالمة داخل التطبيق **انبنت** (يبقى تشغيل خادم coturn فعلي للإنتاج).
+8. **حضور المستخدمين (`UserPresenceTracker`) بالذاكرة**: يصلح لخادم واحد؛ عدة خوادم تحتاج Redis + SignalR backplane.
 7. **«تحصيل من المطعم» (صافي سالب)**: مكتوب (`MarkCollectedAsync`) بس ما انجرب لأن ماكو مطعم صافيه سالب ببيانات الاختبار.
 
 ### أشياء منفذة بس ما انجربت فعلياً (لازم تنتبه لها)

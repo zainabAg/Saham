@@ -75,6 +75,11 @@ public static class SahamSettings
         public const string RefundRetrySeconds = Prefix + ".Payments.RefundRetrySeconds";
     }
 
+    public static class Calls
+    {
+        public const string RingTimeoutSeconds = Prefix + ".Calls.RingTimeoutSeconds";
+    }
+
     public static class Settlements
     {
         public const string DriverPayoutDay = Prefix + ".Settlements.DriverPayoutDay";

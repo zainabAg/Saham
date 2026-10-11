@@ -23,6 +23,7 @@ public enum IncidentType
     RefundFailed = 13,          // UC-22 E2: the accountant's queue
     PaymentAmountMismatch = 14, // UC-05 E5
     CouponRequested = 15,       // BR-072: a restaurant asks the owner for a coupon
+    ContactRequest = 16,        // TD-03: the driver asks ops to call the customer
     Other = 99
 }
 

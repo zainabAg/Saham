@@ -78,6 +78,8 @@ public static class LedgerConfiguration
             b.HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<DeliveryAssignment>().WithMany().HasForeignKey(x => x.AssignmentId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => x.OrderId);
+            // Live in-app calls (ringing or talking) — what the call timeout and the hub look up.
+            b.HasIndex(x => new { x.OrderId, x.StartedAt }).HasFilter("\"EndedAt\" IS NULL").HasDatabaseName("IX_AppContactAttempts_Live");
         });
     }
 }

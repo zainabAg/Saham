@@ -315,7 +315,9 @@ amount_due = T + debt_collected − credit_applied
 - [x] 5. الإلغاء على المتسبب: `CancelCause` + `J-CANCEL-DRIVER-PAY` (نصف الأجر بعد الوصول للمطعم، BR-069) و`J-CUSTOMER-LATE-CANCEL` (BR-045، من المسبق أو دين).
 - [x] 6. التقارير RPT-01/02/03/04/07/08/09/11/12/13 (`ReportAppService`) + تصدير Excel بـ `MiniExcel` (POST، فيُسجل بالتدقيق — SRS 5.5).
 - [x] 7. الطلب المجدول: `ScheduledReleaseWorker` (منفصل عن مؤقتات الطلب) مع فحص منطقة الخدمة، والمحفظة تُقبض وقت الإنشاء.
-- [ ] مؤجل: مزود محفظة حقيقي (EXT-01)، شكاوى/تقييمات وRPT-10 (بعد MVP)، مصاريف التشغيل الشهرية (J-OPERATING-EXPENSE) والقيود التصحيحية (UC-25)، اعتماد الإرجاع اليدوي من شخص ثانٍ (BR-056)، المكالمة داخل التطبيق.
+- [x] 8. المكالمة داخل التطبيق (TD-03، الملحق C §2 بند 8): `VoiceCallManager` (`ContactAttempt` = المكالمة: رنين ← رد ← إنهاء بالمدة)، `DriverTask/CallCustomer` و`RequestOpsCall` (حادثة `ContactRequest`)، `CallAppService` (رد، رفض، إنهاء، المكالمات القائمة)، إشارات WebRTC عبر `OrdersHub.SendCallSignal` للطرف الآخر فقط، `UserPresenceTracker` (تطبيق الزبون غير متصل ← 409 `CUSTOMER_APP_OFFLINE`)، بيانات TURN مؤقتة بصيغة coturn (`Calls:*`)، و`CallTimeoutWorker`. بلا أي رقم هاتف بأي استجابة.
+- [x] `Drivers.PayoutWeekly` صار مطلوباً لدفع أرباح الخميس (UC-31) إضافة لـ `Settlements.MarkPaid`.
+- [ ] مؤجل (بعد MVP حسب الملحق C §3 أو اعتماد خارجي): مزود محفظة حقيقي (EXT-01)، شكاوى/تقييمات/تعويض وRPT-10، المناطق المغلقة وإيقاف الاستقبال، تغيير عنوان التسليم (`Orders.Modify`)، مصاريف التشغيل الشهرية والقيود التصحيحية (UC-25)، اعتماد الإرجاع اليدوي من شخص ثانٍ (BR-056)، خادم TURN فعلي (coturn) للإنتاج.
 
 ### المرحلة 10 — الاختبارات (يوم 6)
 - [ ] TC-14: 50 قبول متزامن → إسناد واحد. TC-15: لا يتجاوز سائق طلبين.

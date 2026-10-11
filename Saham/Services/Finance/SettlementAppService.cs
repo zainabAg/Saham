@@ -141,6 +141,12 @@ public class SettlementAppService : SahamAppService, ISettlementAppService
     public async Task<SettlementDto> MarkPaidAsync(Guid id, PaySettlementDto input)
     {
         var settlement = await _settlementRepository.GetAsync(id);
+        if (settlement.SettlementType == SettlementType.DriverWeeklyPayout)
+        {
+            // UC-31 / REQ-FIN-16: paying drivers' Thursday earnings is its own permission (driver.payout_weekly).
+            await AuthorizationService.CheckAsync(SahamPermissions.Drivers.PayoutWeekly);
+        }
+
         await _settlementManager.MarkPaidAsync(settlement, CurrentUser.GetId(), input.Reference, input.Channel);
 
         await _settlementRepository.UpdateAsync(settlement, autoSave: true);

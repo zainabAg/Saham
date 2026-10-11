@@ -6,7 +6,13 @@ using Saham.Entities.Drivers;
 using Saham.Entities.Orders;
 using Saham.Identity;
 using Saham.Infrastructure.Idempotency;
+using Saham.Entities.Support;
+using Saham.Integrations.Calls;
 using Saham.Permissions;
+using Saham.Services.Calls;
+using Saham.Services.Dtos.Calls;
+using Saham.Settings;
+using Volo.Abp.Settings;
 using Saham.Services.Dtos.Drivers;
 using Volo.Abp.Domain.Repositories;
 
@@ -26,6 +32,8 @@ public class DriverTaskAppService : SahamAppService, IDriverTaskAppService
     private readonly DispatchManager _dispatchManager;
     private readonly DriverTaskMapper _mapper;
     private readonly ICurrentScope _currentScope;
+    private readonly VoiceCallManager _callManager;
+    private readonly IceServerProvider _iceServers;
 
     public DriverTaskAppService(
         IRepository<DeliveryAssignment, Guid> assignmentRepository,
@@ -34,8 +42,12 @@ public class DriverTaskAppService : SahamAppService, IDriverTaskAppService
         DeliveryManager deliveryManager,
         DispatchManager dispatchManager,
         DriverTaskMapper mapper,
-        ICurrentScope currentScope)
+        ICurrentScope currentScope,
+        VoiceCallManager callManager,
+        IceServerProvider iceServers)
     {
+        _callManager = callManager;
+        _iceServers = iceServers;
         _assignmentRepository = assignmentRepository;
         _orderRepository = orderRepository;
         _driverRepository = driverRepository;
@@ -100,6 +112,24 @@ public class DriverTaskAppService : SahamAppService, IDriverTaskAppService
         var (_, order, driver) = await LoadAsync(assignmentId);
         await _dispatchManager.ReleaseActiveAsync(order, "DRIVER_GAVE_UP: " + input.Reason, ActorType.Driver, driver.Id);
         await _orderRepository.UpdateAsync(order);
+    }
+
+    /* TD-03 / TC-73: "call" opens a voice call inside the two apps — the response has no number.
+     * The customer's app offline → 409 CUSTOMER_APP_OFFLINE: the app offers RequestOpsCall. */
+    public async Task<CallSessionDto> CallCustomerAsync(Guid assignmentId)
+    {
+        var (assignment, order, driver) = await LoadAsync(assignmentId);
+        var call = await _callManager.StartAsync(order, assignment, driver.Id);
+        return CallMapper.Map(call, order.Number, await SettingProvider.GetAsync<int>(SahamSettings.Calls.RingTimeoutSeconds),
+            _iceServers.GetFor(driver.Id));
+    }
+
+    /* requestOpsCall: ops get a CONTACT_REQUEST incident and call the customer for the driver. */
+    [Idempotent]
+    public async Task RequestOpsCallAsync(Guid assignmentId)
+    {
+        var (assignment, order, driver) = await LoadAsync(assignmentId);
+        await _callManager.RequestOpsCallAsync(order, assignment, driver.Id);
     }
 
     private async Task<(DeliveryAssignment, Order, Driver)> LoadAsync(Guid assignmentId)

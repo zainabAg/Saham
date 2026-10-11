@@ -16,7 +16,7 @@ public class IncidentOrderEventHandler : ILocalEventHandler<OrderChangedEto>, IT
 {
     private static readonly IncidentType[] ClosedWhenFinished =
     {
-        IncidentType.RestaurantNoResponse, IncidentType.OrderLate, IncidentType.NoDriver
+        IncidentType.RestaurantNoResponse, IncidentType.OrderLate, IncidentType.NoDriver, IncidentType.ContactRequest
     };
 
     private readonly IncidentManager _incidentManager;

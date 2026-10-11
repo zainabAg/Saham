@@ -2717,6 +2717,9 @@ namespace Saham.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("AnsweredAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<Guid?>("AssignmentId")
                         .HasColumnType("uuid");
 
@@ -2739,6 +2742,12 @@ namespace Saham.Migrations
                     b.Property<Guid?>("CreatorId")
                         .HasColumnType("uuid")
                         .HasColumnName("CreatorId");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("ExtraProperties")
                         .IsRequired()
@@ -2768,6 +2777,10 @@ namespace Saham.Migrations
                     b.HasIndex("AssignmentId");
 
                     b.HasIndex("OrderId");
+
+                    b.HasIndex("OrderId", "StartedAt")
+                        .HasDatabaseName("IX_AppContactAttempts_Live")
+                        .HasFilter("\"EndedAt\" IS NULL");
 
                     b.ToTable("AppContactAttempts", (string)null);
                 });

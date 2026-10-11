@@ -257,6 +257,9 @@
     "Saham:UnknownReport": "تقرير غير معروف.",
     "Notify:RefundSucceeded": "تم إرجاع {1} د.ع إلى محفظتك عن الطلب رقم {0}.",
     "Notify:RefundInProgress": "استرداد مبلغ الطلب رقم {0} قيد المعالجة لدى فريق المحاسبة، وسنبلغك عند إتمامه.",
-    "Notify:DriverPayoutPaid": "تم دفع أرباحك الأسبوعية: {0} د.ع."
+    "Notify:DriverPayoutPaid": "تم دفع أرباحك الأسبوعية: {0} د.ع.",
+    "Setting:Saham.Calls.RingTimeoutSeconds": "مدة رنين المكالمة داخل التطبيق (ثانية)",
+    "Saham:CustomerAppOffline": "تطبيق الزبون غير متصل الآن. اطلب من المتابعة الاتصال به.",
+    "Saham:CallNotActive": "المكالمة انتهت أو لم تعد قائمة."
   }
 }

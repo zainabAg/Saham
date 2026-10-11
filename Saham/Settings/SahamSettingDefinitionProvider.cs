@@ -60,6 +60,9 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Payments.WalletEnabled, "true");            // EXT-01: FakeWalletProvider until signed
         Add(context, SahamSettings.Payments.RefundRetrySeconds, "60,300,900,3600,10800"); // UC-22 E1: 1, 5, 15, 60, 180 min
 
+        // In-app calls (TD-03)
+        Add(context, SahamSettings.Calls.RingTimeoutSeconds, "45");
+
         // Settlements (DEC-09, BR-040, BR-068)
         Add(context, SahamSettings.Settlements.DriverPayoutDay, "Thursday");   // earnings up to Wednesday
         Add(context, SahamSettings.Settlements.RestaurantWeekStartDay, "Saturday"); // week Saturday → Friday

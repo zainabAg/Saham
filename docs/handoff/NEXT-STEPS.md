@@ -6,7 +6,10 @@
 ## 0. قبل البدء
 - [ ] تأكد إن المستخدم كومت المرحلة 9 (`git log -1`) ومعها `.gitignore`.
 - [ ] `main` على GitHub بعده متأخر (مشكلة صلاحية حساب `Mtaki4`)، فذكّر المستخدم يرفعه بحسابه.
-- [ ] D7 نهائي: مشروع `Saham.Tests` (xUnit + ABP TestBase) على **قاعدة اختبار منفصلة في Neon**، بدون Docker. تحتاج من المستخدم: connection string لقاعدة الاختبار (branch جديد بـ Neon)، يُحط بـ `appsettings.secrets.json` خاص بمشروع الاختبار ولا ينرفع.
+- [ ] D7 نهائي: مشروع `Saham.Tests` (xUnit + ABP TestBase) على **قاعدة اختبار منفصلة في Neon**، بدون Docker.
+- [ ] **قرار معلّق (أجّله المستخدم 2026-10-11): وين تكون قاعدة الاختبار؟** اشرحه ببساطة واقترح الأول:
+  1. (المقترح) Claude ينشئ قاعدة `saham_test` على نفس خادم Neon بالاتصال الموجود — ما يحتاج شي من المستخدم، ومنفصلة عن بيانات التطوير.
+  2. المستخدم ينشئ branch بلوحة Neon ويعطي الـ connection string (يُحط بـ `appsettings.secrets.json` خاص بمشروع الاختبار ولا ينرفع).
 
 ## 1. البنية
 - [ ] `test/Saham.Tests` (xUnit, `Volo.Abp.TestBase`, `Shouldly`, `NSubstitute`) يشير لمشروع `Saham`.

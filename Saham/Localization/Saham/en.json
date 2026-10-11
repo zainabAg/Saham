@@ -267,6 +267,9 @@
     "Saham:UnknownReport": "Unknown report.",
     "Notify:RefundSucceeded": "{1} IQD for order #{0} was returned to your wallet.",
     "Notify:RefundInProgress": "The refund for order #{0} is being handled by our accounting team; we will tell you when it is done.",
-    "Notify:DriverPayoutPaid": "Your weekly earnings were paid: {0} IQD."
+    "Notify:DriverPayoutPaid": "Your weekly earnings were paid: {0} IQD.",
+    "Setting:Saham.Calls.RingTimeoutSeconds": "In-app call ring time (seconds)",
+    "Saham:CustomerAppOffline": "The customer's app is offline. Ask ops to call the customer.",
+    "Saham:CallNotActive": "The call has ended or is no longer active."
   }
 }

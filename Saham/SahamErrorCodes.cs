@@ -128,4 +128,8 @@ public static class SahamErrorCodes
     public const string SettlementPeriodNotClosed = Prefix + "SettlementPeriodNotClosed";
     public const string InvalidSettlementPeriod = Prefix + "InvalidSettlementPeriod";
     public const string UnknownReport = Prefix + "UnknownReport";
+
+    // In-app calls (TD-03)
+    public const string CustomerAppOffline = Prefix + "CustomerAppOffline";
+    public const string CallNotActive = Prefix + "CallNotActive";
 }

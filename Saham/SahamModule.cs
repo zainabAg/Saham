@@ -228,6 +228,7 @@ public class SahamModule : AbpModule
     {
         Configure<NotificationOptions>(configuration.GetSection("Notifications"));
         Configure<Integrations.Wallet.WalletOptions>(configuration.GetSection("Wallet"));
+        Configure<Integrations.Calls.CallOptions>(configuration.GetSection("Calls"));
     }
 
     /* ABP would otherwise "touch" (ConcurrencyStamp, LastModificationTime) an aggregate whenever a
@@ -357,7 +358,8 @@ public class SahamModule : AbpModule
                          SahamErrorCodes.RefundExceedsPayment, SahamErrorCodes.InvalidRefundStatus,
                          SahamErrorCodes.CouponAlreadyUsed, SahamErrorCodes.InvalidCouponStatus, SahamErrorCodes.CouponCodeTaken,
                          SahamErrorCodes.NoSubstituteProposed, SahamErrorCodes.LateCancelOnlyAfterAcceptance,
-                         SahamErrorCodes.InvalidSettlementStatus, SahamErrorCodes.SettlementPeriodNotClosed
+                         SahamErrorCodes.InvalidSettlementStatus, SahamErrorCodes.SettlementPeriodNotClosed,
+                         SahamErrorCodes.CustomerAppOffline, SahamErrorCodes.CallNotActive
                      })
             {
                 options.Map(code, HttpStatusCode.Conflict);
@@ -707,5 +709,6 @@ public class SahamModule : AbpModule
         await context.AddBackgroundWorkerAsync<PaymentTimeoutWorker>();
         await context.AddBackgroundWorkerAsync<RefundWorker>();
         await context.AddBackgroundWorkerAsync<DailyCloseWorker>();
+        await context.AddBackgroundWorkerAsync<CallTimeoutWorker>();
     }
 }

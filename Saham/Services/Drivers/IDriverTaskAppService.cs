@@ -18,4 +18,8 @@ public interface IDriverTaskAppService : IApplicationService
     Task<DriverTaskDto> ReportCustomerNotAnsweringAsync(Guid assignmentId);
 
     Task GiveUpAsync(Guid assignmentId, ReasonDto input);
+
+    Task<Saham.Services.Dtos.Calls.CallSessionDto> CallCustomerAsync(Guid assignmentId);
+
+    Task RequestOpsCallAsync(Guid assignmentId);
 }
