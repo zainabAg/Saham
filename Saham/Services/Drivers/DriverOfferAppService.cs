@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Saham.Entities.Dispatch;
 using Saham.Entities.Orders;
 using Saham.Identity;
@@ -71,7 +72,8 @@ public class DriverOfferAppService : SahamAppService, IDriverOfferAppService
         {
             await CurrentUnitOfWork!.SaveChangesAsync();
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+            { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_AppDeliveryAssignments_OneActivePerOrder" })
         {
             throw new BusinessException(SahamErrorCodes.OrderAlreadyAssigned);
         }

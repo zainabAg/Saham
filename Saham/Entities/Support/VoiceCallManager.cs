@@ -29,6 +29,7 @@ public class VoiceCallManager : DomainService
 {
     private readonly IRepository<ContactAttempt, Guid> _attemptRepository;
     private readonly IRepository<Order, Guid> _orderRepository;
+    private readonly IRepository<DeliveryAssignment, Guid> _assignmentRepository;
     private readonly IRepository<IdentityUser, Guid> _userRepository;
     private readonly IncidentManager _incidentManager;
     private readonly UserPresenceTracker _presence;
@@ -39,6 +40,7 @@ public class VoiceCallManager : DomainService
     public VoiceCallManager(
         IRepository<ContactAttempt, Guid> attemptRepository,
         IRepository<Order, Guid> orderRepository,
+        IRepository<DeliveryAssignment, Guid> assignmentRepository,
         IRepository<IdentityUser, Guid> userRepository,
         IncidentManager incidentManager,
         UserPresenceTracker presence,
@@ -48,6 +50,7 @@ public class VoiceCallManager : DomainService
     {
         _attemptRepository = attemptRepository;
         _orderRepository = orderRepository;
+        _assignmentRepository = assignmentRepository;
         _userRepository = userRepository;
         _incidentManager = incidentManager;
         _presence = presence;
@@ -155,6 +158,35 @@ public class VoiceCallManager : DomainService
         }
 
         return ringing.Count;
+    }
+
+    /* Live calls that can no longer go on are closed, so a lost call never blocks the next one
+     * (StartAsync re-joins a live call instead of ringing again):
+     * - the driver no longer holds the order (delivered, cancelled, released to another driver);
+     * - neither app is connected any more (both crashed or lost the network mid-call). */
+    public async Task<int> CloseStaleAsync()
+    {
+        var live = await _attemptRepository.GetListAsync(a => a.Channel == ContactChannel.InAppVoice && a.EndedAt == null);
+        var closed = 0;
+        foreach (var call in live.Where(c => c.IsLive)) // a call ExpireRingingAsync just closed is still in the result
+        {
+            var order = await _orderRepository.GetAsync(call.OrderId, includeDetails: false);
+            var assignment = call.AssignmentId.HasValue ? await _assignmentRepository.FindAsync(call.AssignmentId.Value) : null;
+            var taskOver = assignment is not { IsActive: true } || assignment.DriverId != call.InitiatedBy;
+            var bothGone = !_presence.IsOnline(call.InitiatedBy) && !_presence.IsOnline(order.CustomerId);
+            if (!taskOver && !bothGone)
+            {
+                continue;
+            }
+
+            call.End(Clock.Now, failed: false);
+            await _attemptRepository.UpdateAsync(call);
+            _notifier.Queue(call.InitiatedBy, new { kind = "ended", callId = call.Id, durationSeconds = call.DurationSeconds });
+            _notifier.Queue(order.CustomerId, new { kind = "ended", callId = call.Id, durationSeconds = call.DurationSeconds });
+            closed++;
+        }
+
+        return closed;
     }
 
     /* requestOpsCall: the customer's app is offline (or the call failed) — ops call on the driver's behalf. */

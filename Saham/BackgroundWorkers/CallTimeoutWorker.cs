@@ -10,7 +10,8 @@ using Volo.Abp.Uow;
 namespace Saham.BackgroundWorkers;
 
 /* In-app calls nobody picked up within the ring time become NO_ANSWER — a valid unanswered attempt
- * for "not received" (BR-063) — and both apps stop ringing. */
+ * for "not received" (BR-063) — and both apps stop ringing. Calls that can no longer go on (task over,
+ * both apps gone) are closed too. */
 public class CallTimeoutWorker : AsyncPeriodicBackgroundWorkerBase
 {
     public CallTimeoutWorker(AbpAsyncTimer timer, IServiceScopeFactory serviceScopeFactory)
@@ -24,7 +25,9 @@ public class CallTimeoutWorker : AsyncPeriodicBackgroundWorkerBase
         try
         {
             using var uow = workerContext.ServiceProvider.GetRequiredService<IUnitOfWorkManager>().Begin(requiresNew: true, isTransactional: true);
-            await workerContext.ServiceProvider.GetRequiredService<VoiceCallManager>().ExpireRingingAsync();
+            var calls = workerContext.ServiceProvider.GetRequiredService<VoiceCallManager>();
+            await calls.ExpireRingingAsync();
+            await calls.CloseStaleAsync();
             await uow.CompleteAsync();
         }
         catch (Exception ex)

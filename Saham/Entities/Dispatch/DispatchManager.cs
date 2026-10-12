@@ -98,26 +98,24 @@ public class DispatchManager : DomainService
     private async Task<(Guid DriverId, int DistanceM)?> FindBestDriverAsync(Order order, Point restaurantLocation, DateTime now)
     {
         var freshSeconds = await _settingProvider.GetAsync<int>(SahamSettings.Drivers.LocationFreshSeconds);
-        var freshSince = now.AddSeconds(-freshSeconds);
+        var maxActive = await _settingProvider.GetAsync<int>(SahamSettings.Dispatch.MaxActiveOrdersPerDriver);
         var isCash = order.PaymentMethod == PaymentMethod.Cash;
 
         var offers = await _offerRepository.GetQueryableAsync();
         var assignments = await _assignmentRepository.GetQueryableAsync();
 
         var query = (await _driverRepository.GetQueryableAsync())
-            .Where(d => d.CityId == order.CityId
-                        && d.ReviewStatus == DriverReviewStatus.Approved
-                        && d.Availability == DriverAvailability.Available
-                        && d.LastLocation != null
-                        && d.LastLocationAt >= freshSince
-                        && d.ActiveOrderCount == 0)
-            .Where(d => !isCash || d.CashBlocked == null)
+            .Where(DriverDispatchEligibility.Predicate(order.CityId, isCash, now, freshSeconds, maxActive, automatic: true))
+            // Do not trust the counter alone when selecting a supposedly idle driver.
+            .Where(d => !assignments.Any(a => a.DriverId == d.Id &&
+                (a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.PickedUp)))
             // not busy with another offer, never offered this order before
             .Where(d => !offers.Any(o => o.DriverId == d.Id && (o.Status == OfferStatus.Pending || o.OrderId == order.Id)))
             // not a driver who already held and released this order (BR-033)
             .Where(d => !assignments.Any(a => a.DriverId == d.Id && a.OrderId == order.Id))
             .OrderBy(d => d.LastLocation!.Distance(restaurantLocation))
             .ThenBy(d => d.LastTaskCompletedAt ?? DateTime.MinValue)
+            .ThenBy(d => d.Id) // stable choice when distance and waiting time are equal
             .Select(d => new { d.Id, Distance = d.LastLocation!.Distance(restaurantLocation) });
 
         var best = await AsyncExecuter.FirstOrDefaultAsync(query);
@@ -156,10 +154,19 @@ public class DispatchManager : DomainService
             throw new BusinessException(SahamErrorCodes.OrderAlreadyAssigned);
         }
 
+        var driver = await _driverRepository.GetAsync(driverId);
+        // An offer does not reserve eligibility: approval, availability, cash block and
+        // location can change during its 30 seconds (BR-029).
+        await EnsureEligibleAsync(order, driver, now, automatic: true);
+        if (await _assignmentRepository.AnyAsync(a => a.DriverId == driverId &&
+                (a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.PickedUp)))
+        {
+            throw new BusinessException(SahamErrorCodes.DriverAtCapacity);
+        }
+
+        now = Clock.Now; // do not accept against the timestamp from before database/settings reads
         offer.Accept(now); // pending and not expired, or 409
         await _offerRepository.UpdateAsync(offer);
-
-        var driver = await _driverRepository.GetAsync(driverId);
         return await CreateAssignmentAsync(order, driver, offer.Id, AssignedByType.System, null, now);
     }
 
@@ -183,15 +190,11 @@ public class DispatchManager : DomainService
 
         var now = Clock.Now;
         var driver = await _driverRepository.GetAsync(driverId);
-        if (!driver.IsApproved || driver.Availability != DriverAvailability.Available)
-        {
-            throw new BusinessException(SahamErrorCodes.DriverNotAvailable);
-        }
 
-        if (order.PaymentMethod == PaymentMethod.Cash && driver.CashBlocked != null)
-        {
-            throw new BusinessException(SahamErrorCodes.DriverCashBlocked);
-        }
+        // The order's own state (Placed/Accepted/Ready, not on hold) is checked by MarkAssigned.
+        // Validate before releasing the old assignment, so an ineligible replacement
+        // cannot take away the order's current driver.
+        await EnsureEligibleAsync(order, driver, now, automatic: false);
 
         var active = await FindActiveAssignmentAsync(order.Id);
         if (active?.DriverId == driverId)
@@ -246,6 +249,14 @@ public class DispatchManager : DomainService
     private Task<bool> HasActiveAssignmentAsync(Guid orderId) =>
         _assignmentRepository.AnyAsync(a =>
             a.OrderId == orderId && (a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.PickedUp));
+
+    private async Task EnsureEligibleAsync(Order order, Driver driver, DateTime now, bool automatic)
+    {
+        var freshSeconds = await _settingProvider.GetAsync<int>(SahamSettings.Drivers.LocationFreshSeconds);
+        var maxActive = await _settingProvider.GetAsync<int>(SahamSettings.Dispatch.MaxActiveOrdersPerDriver);
+        DriverDispatchEligibility.Ensure(driver, order.CityId, order.PaymentMethod == PaymentMethod.Cash,
+            now, freshSeconds, maxActive, automatic);
+    }
 
     private async Task<DeliveryAssignment> CreateAssignmentAsync(
         Order order, Driver driver, Guid? offerId, AssignedByType byType, Guid? byUser, DateTime now)

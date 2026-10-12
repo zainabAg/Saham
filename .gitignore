@@ -265,3 +265,5 @@ Saham/Logs/*
 **/wwwroot/libs/*
 # Local secrets (DB connection string)
 appsettings.secrets.json
+# Firebase service account (private key)
+firebase-service-account*.json
