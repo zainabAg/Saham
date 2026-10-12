@@ -227,6 +227,7 @@ public class SahamModule : AbpModule
         ConfigureEntityChanges();
         ConfigureNotifications(configuration);
         ConfigureBlobStoring(configuration);
+        ConfigurePush(context, configuration);
     }
 
     /* "Notifications" section: test-only switches for the notification queue (NotificationOptions). */
@@ -235,6 +236,19 @@ public class SahamModule : AbpModule
         Configure<NotificationOptions>(configuration.GetSection("Notifications"));
         Configure<Integrations.Wallet.WalletOptions>(configuration.GetSection("Wallet"));
         Configure<Integrations.Calls.CallOptions>(configuration.GetSection("Calls"));
+    }
+
+    /* "Firebase" section: with a service account, pushes go out through FCM; without one (tests,
+     * a fresh clone) they are only logged (LoggingPushSender). */
+    private void ConfigurePush(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        Configure<Integrations.Push.FirebaseOptions>(configuration.GetSection("Firebase"));
+
+        var firebase = configuration.GetSection("Firebase").Get<Integrations.Push.FirebaseOptions>();
+        if (firebase?.IsConfigured == true)
+        {
+            context.Services.Replace(ServiceDescriptor.Transient<Integrations.Push.IPushSender, Integrations.Push.FcmPushSender>());
+        }
     }
 
     /* "BlobStorage:S3" section: files go to S3-compatible object storage, the database keeps only

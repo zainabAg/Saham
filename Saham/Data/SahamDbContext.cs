@@ -82,6 +82,7 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
     public DbSet<Entities.Settlements.Settlement> Settlements { get; set; }
     public DbSet<OutboxEvent> OutboxEvents { get; set; }
     public DbSet<Notification> Notifications { get; set; }
+    public DbSet<UserDevice> UserDevices { get; set; }
 
     // Infrastructure
     public DbSet<IdempotencyRecord> IdempotencyRecords { get; set; }

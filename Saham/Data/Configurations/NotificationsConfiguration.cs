@@ -4,7 +4,7 @@ using Volo.Abp.EntityFrameworkCore.Modeling;
 
 namespace Saham.Data.Configurations;
 
-/* M10 Notifications: the SMS log, the outbox and the notification queue (SRS 13.4, I-6). */
+/* M10 Notifications: the SMS log, the outbox, the notification queue (SRS 13.4, I-6) and push devices. */
 public static class NotificationsConfiguration
 {
     public static void ConfigureSahamNotifications(this ModelBuilder builder)
@@ -56,5 +56,14 @@ public static class NotificationsConfiguration
             b.HasIndex(x => x.OrderId);
         });
 
+        builder.Entity<UserDevice>(b =>
+        {
+            b.ToTable(SahamDbContext.DbTablePrefix + "UserDevices", SahamDbContext.DbSchema);
+            b.ConfigureByConvention();
+            b.Property(x => x.Token).IsRequired().HasMaxLength(UserDevice.TokenMaxLength);
+            b.Property(x => x.Platform).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.HasIndex(x => x.Token).IsUnique(); // one device, one user
+            b.HasIndex(x => x.UserId);
+        });
     }
 }
