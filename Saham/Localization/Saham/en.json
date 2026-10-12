@@ -189,6 +189,8 @@
     "Saham:DocumentInvalidType": "Upload a JPG, PNG or PDF file.",
     "Saham:DocumentTooLarge": "The file must not exceed {maxMb} MB.",
     "Saham:DocumentAlreadyAccepted": "This document has already been accepted.",
+    "Saham:ImageInvalidType": "Upload a JPG, PNG or WEBP image.",
+    "Saham:DocumentFileRemoved": "This document was replaced by a newer one; its file is no longer kept.",
     "Saham:InvalidDriverReviewState": "This document has already been reviewed.",
     "Saham:OfferExpired": "The offer has expired.",
     "Saham:OfferNotPending": "This offer is no longer open.",

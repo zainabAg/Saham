@@ -179,6 +179,8 @@
     "Saham:DocumentInvalidType": "ارفع ملف JPG أو PNG أو PDF.",
     "Saham:DocumentTooLarge": "حجم الملف يجب ألا يتجاوز {maxMb} ميغابايت.",
     "Saham:DocumentAlreadyAccepted": "هذه الوثيقة مقبولة مسبقاً.",
+    "Saham:ImageInvalidType": "ارفع صورة JPG أو PNG أو WEBP.",
+    "Saham:DocumentFileRemoved": "استُبدلت هذه الوثيقة بنسخة أحدث ولم يعد ملفها محفوظاً.",
     "Saham:InvalidDriverReviewState": "هذه الوثيقة تمت مراجعتها مسبقاً.",
     "Saham:OfferExpired": "انتهى العرض.",
     "Saham:OfferNotPending": "هذا العرض لم يعد متاحاً.",

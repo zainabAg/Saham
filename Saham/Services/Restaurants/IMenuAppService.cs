@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Saham.Services.Dtos.Restaurants;
 using Volo.Abp.Application.Services;
+using Volo.Abp.Content;
 
 namespace Saham.Services.Restaurants;
 
@@ -16,6 +17,8 @@ public interface IMenuAppService : IApplicationService
     Task<MenuItemDto> CreateItemAsync(CreateUpdateMenuItemDto input, Guid? restaurantId = null);
 
     Task<MenuItemDto> UpdateItemAsync(Guid id, CreateUpdateMenuItemDto input);
+
+    Task<MenuItemDto> UploadItemImageAsync(Guid id, IRemoteStreamContent file);
 
     Task<MenuItemDto> ArchiveItemAsync(Guid id);
 

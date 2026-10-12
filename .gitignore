@@ -263,3 +263,5 @@ Saham/Logs/*
 
 # Use abp install-libs to restore.
 **/wwwroot/libs/*
+# Local secrets (DB connection string)
+appsettings.secrets.json

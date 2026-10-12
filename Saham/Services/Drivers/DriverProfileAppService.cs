@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -65,13 +64,7 @@ public class DriverProfileAppService : SahamAppService, IDriverProfileAppService
     {
         var driver = await _currentScope.GetDriverAsync();
 
-        using var buffer = new MemoryStream();
-        await using (var stream = file.GetStream())
-        {
-            await stream.CopyToAsync(buffer);
-        }
-
-        buffer.Position = 0;
+        using var buffer = await ReadToMemoryAsync(file, DriverDocument.MaxSizeBytes);
         var document = await _driverManager.UploadDocumentAsync(driver, docType, buffer, file.ContentType, buffer.Length);
         await _driverRepository.UpdateAsync(driver);
 

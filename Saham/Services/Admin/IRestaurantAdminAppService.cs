@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Volo.Abp.Content;
 using Saham.Services.Dtos.Admin;
 using Saham.Services.Dtos.Restaurants;
 using Volo.Abp.Application.Dtos;
@@ -16,6 +17,8 @@ public interface IRestaurantAdminAppService : IApplicationService
     Task<RestaurantDto> CreateAsync(CreateRestaurantDto input);
 
     Task<RestaurantDto> UpdateAsync(Guid id, UpdateRestaurantDto input);
+
+    Task<RestaurantDto> UploadLogoAsync(Guid id, IRemoteStreamContent file);
 
     Task<RestaurantDto> SetCommissionRateAsync(Guid id, SetCommissionRateDto input);
 

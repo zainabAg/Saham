@@ -90,6 +90,11 @@ public class Restaurant : FullAuditedAggregateRoot<Guid>
         Phone = Check.NotNullOrWhiteSpace(phone, nameof(phone), PhoneMaxLength);
         Location = location;
         AddressText = Check.NotNullOrWhiteSpace(addressText, nameof(addressText), AddressTextMaxLength).Trim();
+        SetLogo(logoUrl);
+    }
+
+    public void SetLogo(string? logoUrl)
+    {
         LogoUrl = logoUrl.IsNullOrWhiteSpace() ? null : Check.Length(logoUrl!.Trim(), nameof(logoUrl), LogoUrlMaxLength);
     }
 

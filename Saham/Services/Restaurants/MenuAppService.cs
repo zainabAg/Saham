@@ -7,12 +7,14 @@ using Saham.Entities.Restaurants;
 using Saham.Identity;
 using Saham.Permissions;
 using Saham.Services.Dtos.Restaurants;
+using Volo.Abp.Content;
 using Volo.Abp.Domain.Repositories;
 
 namespace Saham.Services.Restaurants;
 
 /* Menu management by the restaurant itself (REQ-RST-06/07, BR-050):
  * - products, prices, photos, sections, archiving: manager (and owner) — menu.manage;
+ *   a photo is uploaded here or given as an outside URL; our replaced photos are deleted;
  * - one-tap "sold out" switch: manager, kitchen, ops, owner — menu.toggle_availability.
  * Restaurant staff act on their own restaurant; company staff pass restaurantId. */
 [Authorize]
@@ -22,6 +24,7 @@ public class MenuAppService : SahamAppService, IMenuAppService
     private readonly IRepository<MenuItem, Guid> _itemRepository;
     private readonly IRepository<Restaurant, Guid> _restaurantRepository;
     private readonly MenuManager _menuManager;
+    private readonly RestaurantMediaManager _mediaManager;
     private readonly ICurrentScope _currentScope;
 
     public MenuAppService(
@@ -29,12 +32,14 @@ public class MenuAppService : SahamAppService, IMenuAppService
         IRepository<MenuItem, Guid> itemRepository,
         IRepository<Restaurant, Guid> restaurantRepository,
         MenuManager menuManager,
+        RestaurantMediaManager mediaManager,
         ICurrentScope currentScope)
     {
         _categoryRepository = categoryRepository;
         _itemRepository = itemRepository;
         _restaurantRepository = restaurantRepository;
         _menuManager = menuManager;
+        _mediaManager = mediaManager;
         _currentScope = currentScope;
     }
 
@@ -113,6 +118,7 @@ public class MenuAppService : SahamAppService, IMenuAppService
     public async Task<MenuItemDto> UpdateItemAsync(Guid id, CreateUpdateMenuItemDto input)
     {
         var item = await GetItemInScopeAsync(id);
+        var oldImageUrl = item.ImageUrl;
 
         await _menuManager.UpdateItemAsync(
             item,
@@ -124,6 +130,26 @@ public class MenuAppService : SahamAppService, IMenuAppService
             input.SortOrder);
 
         await _itemRepository.UpdateAsync(item);
+        if (oldImageUrl != item.ImageUrl)
+        {
+            await _mediaManager.DeleteIfOwnedAsync(item.RestaurantId, oldImageUrl);
+        }
+
+        return ObjectMapper.Map<MenuItem, MenuItemDto>(item);
+    }
+
+    /* REQ-RST-06: jpg / png / webp up to 2 MB, multipart/form-data. */
+    [Authorize(SahamPermissions.Menu.Manage)]
+    public async Task<MenuItemDto> UploadItemImageAsync(Guid id, IRemoteStreamContent file)
+    {
+        var item = await GetItemInScopeAsync(id);
+        var oldImageUrl = item.ImageUrl;
+
+        using var buffer = await ReadToMemoryAsync(file, RestaurantMediaManager.MaxSizeBytes);
+        item.SetImage(await _mediaManager.SaveAsync(item.RestaurantId, RestaurantMediaManager.MenuFolder, buffer, file.ContentType, buffer.Length));
+
+        await _itemRepository.UpdateAsync(item);
+        await _mediaManager.DeleteIfOwnedAsync(item.RestaurantId, oldImageUrl);
         return ObjectMapper.Map<MenuItem, MenuItemDto>(item);
     }
 

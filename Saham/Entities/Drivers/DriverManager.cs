@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
+using Saham.Entities.Shared;
 using Saham.Identity;
 using Saham.Settings;
 using Volo.Abp;
@@ -11,6 +12,7 @@ using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Domain.Services;
 using Volo.Abp.Identity;
 using Volo.Abp.Settings;
+using Volo.Abp.Uow;
 
 namespace Saham.Entities.Drivers;
 
@@ -24,19 +26,22 @@ public class DriverManager : DomainService
     private readonly IBlobContainer<DriverDocumentContainer> _blobContainer;
     private readonly IdentityUserManager _userManager;
     private readonly ISettingProvider _settingProvider;
+    private readonly IUnitOfWorkManager _unitOfWorkManager;
 
     public DriverManager(
         IRepository<Driver, Guid> driverRepository,
         IRepository<DriverDocument, Guid> documentRepository,
         IBlobContainer<DriverDocumentContainer> blobContainer,
         IdentityUserManager userManager,
-        ISettingProvider settingProvider)
+        ISettingProvider settingProvider,
+        IUnitOfWorkManager unitOfWorkManager)
     {
         _driverRepository = driverRepository;
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
         _userManager = userManager;
         _settingProvider = settingProvider;
+        _unitOfWorkManager = unitOfWorkManager;
     }
 
     /* A phone user becomes a driver applicant: DRIVER role + a profile waiting for review. */
@@ -70,7 +75,7 @@ public class DriverManager : DomainService
     public async Task<DriverDocument> UploadDocumentAsync(
         Driver driver, DriverDocumentType docType, Stream content, string contentType, long sizeBytes)
     {
-        if (!AllowedContentTypes.Contains(contentType))
+        if (!AllowedContentTypes.Contains(contentType) || !StoredFiles.HasSignature(content, contentType))
         {
             throw new BusinessException(SahamErrorCodes.DocumentInvalidType);
         }
@@ -97,11 +102,22 @@ public class DriverManager : DomainService
         var blobName = $"{driver.Id:N}/{docType}/{id:N}";
         await _blobContainer.SaveAsync(blobName, content, overrideExisting: false);
 
+        if (current != null)
+        {
+            // A replaced file is never reviewed: don't keep paying for it.
+            await StoredFiles.DeleteAfterCommitAsync(_unitOfWorkManager, _blobContainer, current.BlobName, Logger);
+        }
+
         driver.MarkDocsPending();
         return await _documentRepository.InsertAsync(new DriverDocument(id, driver.Id, docType, blobName, contentType, sizeBytes));
     }
 
-    public Task<byte[]> GetDocumentContentAsync(DriverDocument document) => _blobContainer.GetAllBytesAsync(document.BlobName);
+    /* A replaced document's file is deleted (UploadDocumentAsync): say so instead of failing. */
+    public async Task<byte[]> GetDocumentContentAsync(DriverDocument document)
+    {
+        return await _blobContainer.GetAllBytesOrNullAsync(document.BlobName)
+               ?? throw new BusinessException(SahamErrorCodes.DocumentFileRemoved);
+    }
 
     /* Ops accept or reject each document (driver.documents.review). When all three are accepted,
      * the driver waits for the owner's final approval (SOD-07). */

@@ -54,8 +54,13 @@ public class MenuItem : AuditedAggregateRoot<Guid>
         Name = name;
         Description = description;
         SetPrice(price);
-        ImageUrl = imageUrl.IsNullOrWhiteSpace() ? null : Check.Length(imageUrl!.Trim(), nameof(imageUrl), ImageUrlMaxLength);
+        SetImage(imageUrl);
         SortOrder = sortOrder;
+    }
+
+    public void SetImage(string? imageUrl)
+    {
+        ImageUrl = imageUrl.IsNullOrWhiteSpace() ? null : Check.Length(imageUrl!.Trim(), nameof(imageUrl), ImageUrlMaxLength);
     }
 
     public void SetAvailability(bool isAvailable) => IsAvailable = isAvailable;

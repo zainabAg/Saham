@@ -12,12 +12,13 @@ using Saham.Permissions;
 using Saham.Services.Dtos.Admin;
 using Saham.Services.Dtos.Restaurants;
 using Volo.Abp.Application.Dtos;
+using Volo.Abp.Content;
 using Volo.Abp.Domain.Repositories;
 
 namespace Saham.Services.Admin;
 
 /* Owner onboarding of restaurants (restaurant.onboard): create, edit, activate/suspend,
- * commission rate per restaurant (DEC-05), and the restaurant's manager account.
+ * commission rate per restaurant (DEC-05), the logo (uploaded, or an outside URL), and the restaurant's manager account.
  * Same shape as the Book CRUD sample, with domain methods instead of public setters. */
 [Authorize(SahamPermissions.Restaurants.Onboard)]
 public class RestaurantAdminAppService : SahamAppService, IRestaurantAdminAppService
@@ -25,15 +26,18 @@ public class RestaurantAdminAppService : SahamAppService, IRestaurantAdminAppSer
     private readonly IRepository<Restaurant, Guid> _repository;
     private readonly IRepository<City, Guid> _cityRepository;
     private readonly RestaurantStaffManager _restaurantStaffManager;
+    private readonly RestaurantMediaManager _mediaManager;
 
     public RestaurantAdminAppService(
         IRepository<Restaurant, Guid> repository,
         IRepository<City, Guid> cityRepository,
-        RestaurantStaffManager restaurantStaffManager)
+        RestaurantStaffManager restaurantStaffManager,
+        RestaurantMediaManager mediaManager)
     {
         _repository = repository;
         _cityRepository = cityRepository;
         _restaurantStaffManager = restaurantStaffManager;
+        _mediaManager = mediaManager;
     }
 
     public async Task<RestaurantDto> GetAsync(Guid id)
@@ -82,6 +86,7 @@ public class RestaurantAdminAppService : SahamAppService, IRestaurantAdminAppSer
     public async Task<RestaurantDto> UpdateAsync(Guid id, UpdateRestaurantDto input)
     {
         var restaurant = await _repository.GetAsync(id);
+        var oldLogoUrl = restaurant.LogoUrl;
         restaurant.UpdateProfile(
             input.Name.ToValue(),
             PhoneNumberNormalizer.Normalize(input.Phone),
@@ -90,6 +95,25 @@ public class RestaurantAdminAppService : SahamAppService, IRestaurantAdminAppSer
             input.LogoUrl);
 
         await _repository.UpdateAsync(restaurant);
+        if (oldLogoUrl != restaurant.LogoUrl)
+        {
+            await _mediaManager.DeleteIfOwnedAsync(restaurant.Id, oldLogoUrl);
+        }
+
+        return ObjectMapper.Map<Restaurant, RestaurantDto>(restaurant);
+    }
+
+    /* jpg / png / webp up to 2 MB, multipart/form-data. The previous uploaded logo is deleted. */
+    public async Task<RestaurantDto> UploadLogoAsync(Guid id, IRemoteStreamContent file)
+    {
+        var restaurant = await _repository.GetAsync(id);
+        var oldLogoUrl = restaurant.LogoUrl;
+
+        using var buffer = await ReadToMemoryAsync(file, RestaurantMediaManager.MaxSizeBytes);
+        restaurant.SetLogo(await _mediaManager.SaveAsync(restaurant.Id, RestaurantMediaManager.LogoFolder, buffer, file.ContentType, buffer.Length));
+
+        await _repository.UpdateAsync(restaurant);
+        await _mediaManager.DeleteIfOwnedAsync(restaurant.Id, oldLogoUrl);
         return ObjectMapper.Map<Restaurant, RestaurantDto>(restaurant);
     }
 

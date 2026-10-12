@@ -49,6 +49,10 @@ using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.Identity.EntityFrameworkCore;
 using Volo.Abp.FeatureManagement.EntityFrameworkCore;
 using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
+using Volo.Abp.BlobStoring;
+using Volo.Abp.BlobStoring.Aws;
+using Saham.Entities.Drivers;
+using Saham.Integrations.Storage;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore.PostgreSql;
 using Volo.Abp.Studio.Client.AspNetCore;
@@ -128,6 +132,7 @@ namespace Saham;
     typeof(AbpSettingManagementEntityFrameworkCoreModule),
     typeof(AbpBackgroundJobsEntityFrameworkCoreModule),
     typeof(BlobStoringDatabaseEntityFrameworkCoreModule),
+    typeof(AbpBlobStoringAwsModule),
     typeof(AbpEntityFrameworkCorePostgreSqlModule)
 )]
 public class SahamModule : AbpModule
@@ -221,6 +226,7 @@ public class SahamModule : AbpModule
         ConfigureJson();
         ConfigureEntityChanges();
         ConfigureNotifications(configuration);
+        ConfigureBlobStoring(configuration);
     }
 
     /* "Notifications" section: test-only switches for the notification queue (NotificationOptions). */
@@ -229,6 +235,39 @@ public class SahamModule : AbpModule
         Configure<NotificationOptions>(configuration.GetSection("Notifications"));
         Configure<Integrations.Wallet.WalletOptions>(configuration.GetSection("Wallet"));
         Configure<Integrations.Calls.CallOptions>(configuration.GetSection("Calls"));
+    }
+
+    /* "BlobStorage:S3" section: files go to S3-compatible object storage, the database keeps only
+     * their metadata (DriverDocument) or URL (LogoUrl, ImageUrl). One private bucket per container.
+     * Without keys (tests, a fresh clone) the database provider stays. */
+    private void ConfigureBlobStoring(IConfiguration configuration)
+    {
+        var s3 = configuration.GetSection("BlobStorage:S3").Get<S3StorageOptions>() ?? new S3StorageOptions();
+        Configure<S3StorageOptions>(configuration.GetSection("BlobStorage:S3"));
+
+        if (!s3.IsConfigured)
+        {
+            return;
+        }
+
+        Configure<AbpBlobStoringOptions>(options =>
+        {
+            options.Containers.Configure<DriverDocumentContainer>(container => UseS3(container, s3, s3.DriverDocumentsBucket));
+            options.Containers.Configure<RestaurantMediaContainer>(container => UseS3(container, s3, s3.RestaurantMediaBucket));
+        });
+    }
+
+    private static void UseS3(BlobContainerConfiguration container, S3StorageOptions s3, string bucket)
+    {
+        container.UseAws(aws =>
+        {
+            aws.AccessKeyId = s3.AccessKeyId;
+            aws.SecretAccessKey = s3.SecretAccessKey;
+            aws.UseCredentials = true;
+            aws.Region = s3.Region;
+            aws.ContainerName = bucket;
+            aws.CreateContainerIfNotExists = s3.CreateBucketIfNotExists;
+        });
     }
 
     /* ABP would otherwise "touch" (ConcurrencyStamp, LastModificationTime) an aggregate whenever a
@@ -384,10 +423,12 @@ public class SahamModule : AbpModule
                 options.Map(code, HttpStatusCode.UnprocessableEntity);
             }
             options.Map(SahamErrorCodes.NoDriverLocation, HttpStatusCode.UnprocessableEntity);
+            options.Map(SahamErrorCodes.DocumentFileRemoved, HttpStatusCode.Gone);
 
             foreach (var code in new[]
                      {
-                         SahamErrorCodes.ReasonRequired, SahamErrorCodes.DocumentInvalidType, SahamErrorCodes.DocumentTooLarge
+                         SahamErrorCodes.ReasonRequired, SahamErrorCodes.DocumentInvalidType, SahamErrorCodes.DocumentTooLarge,
+                         SahamErrorCodes.ImageInvalidType
                      })
             {
                 options.Map(code, HttpStatusCode.BadRequest);

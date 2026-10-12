@@ -81,6 +81,8 @@ public static class SahamErrorCodes
     public const string DocumentInvalidType = Prefix + "DocumentInvalidType";
     public const string DocumentTooLarge = Prefix + "DocumentTooLarge";
     public const string DocumentAlreadyAccepted = Prefix + "DocumentAlreadyAccepted";
+    public const string ImageInvalidType = Prefix + "ImageInvalidType";
+    public const string DocumentFileRemoved = Prefix + "DocumentFileRemoved";
     public const string InvalidDriverReviewState = Prefix + "InvalidDriverReviewState";
     public const string OfferExpired = Prefix + "OfferExpired";
     public const string OfferNotPending = Prefix + "OfferNotPending";
