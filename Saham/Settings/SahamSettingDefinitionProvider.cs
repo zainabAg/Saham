@@ -21,7 +21,8 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Orders.ItemDecisionMinutes, "5");           // DEC-10
         Add(context, SahamSettings.Orders.MinPrepMinutes, "5");
         Add(context, SahamSettings.Orders.MaxPrepMinutes, "120");
-        Add(context, SahamSettings.Orders.LateThresholdMinutes, "10");         // ASM-21
+        Add(context, SahamSettings.Orders.LateThresholdMinutes, "10");         // ASM-21 / BR-058: late after eta_max + this
+        Add(context, SahamSettings.Orders.EtaWindowMinutes, "10");             // ETA window width (keeps the previous output)
         Add(context, SahamSettings.Orders.QuoteLifetimeMinutes, "10");
         Add(context, SahamSettings.Orders.BalanceLockTimeoutSeconds, "20"); // < 30 s command timeout
         Add(context, SahamSettings.Orders.WalletPaymentTimeoutMinutes, "15");  // ASM-17

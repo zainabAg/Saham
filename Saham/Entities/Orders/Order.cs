@@ -324,9 +324,14 @@ public class Order : AuditedAggregateRoot<Guid>
         AcceptedAt = now;
         EstimatedReadyAt = now.AddMinutes(prepMinutes);
 
-        // The estimate shown to the customer now follows the restaurant's own preparation time.
+        // The estimate shown to the customer now follows the restaurant's own preparation time:
+        // ready + TravelMinutes (which already holds the pickup buffer + ride; the window keeps its width).
+        // A scheduled order released early never arrives before the time the customer chose.
         var range = EtaMaxAt - EtaMinAt;
-        EtaMinAt = EstimatedReadyAt.Value.AddMinutes(TravelMinutes);
+        var etaMin = EstimatedReadyAt.Value.AddMinutes(TravelMinutes);
+        EtaMinAt = OrderType == OrderType.Scheduled && ScheduledFor.HasValue && ScheduledFor.Value > etaMin
+            ? ScheduledFor.Value
+            : etaMin;
         EtaMaxAt = EtaMinAt + range;
     }
 

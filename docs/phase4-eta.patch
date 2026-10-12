@@ -1,0 +1,477 @@
+diff --git a/Saham/BackgroundWorkers/OrderTimeoutsWorker.cs b/Saham/BackgroundWorkers/OrderTimeoutsWorker.cs
+index 2c48bc2..3947418 100644
+--- a/Saham/BackgroundWorkers/OrderTimeoutsWorker.cs
++++ b/Saham/BackgroundWorkers/OrderTimeoutsWorker.cs
+@@ -113,7 +113,7 @@ public class OrderTimeoutsWorker : AsyncPeriodicBackgroundWorkerBase
+             var late = await asyncExecuter.ToListAsync((await orders.GetQueryableAsync())
+                 .Where(o => (o.Status == OrderStatus.Placed || o.Status == OrderStatus.Accepted ||
+                              o.Status == OrderStatus.Ready || o.Status == OrderStatus.PickedUp) &&
+-                            o.EtaMaxAt <= lateBefore &&
++                            o.EtaMaxAt < lateBefore && // BR-058: late after eta_max + grace, not at it (EtaEstimator.IsLate)
+                             !allIncidents.Any(i => i.OrderId == o.Id && i.IncidentType == IncidentType.OrderLate))
+                 .OrderBy(o => o.PlacedAt)
+                 .Select(o => new { o.Id, o.RestaurantId })
+diff --git a/Saham/Entities/Orders/Order.cs b/Saham/Entities/Orders/Order.cs
+index 2f836bd..1e4892f 100644
+--- a/Saham/Entities/Orders/Order.cs
++++ b/Saham/Entities/Orders/Order.cs
+@@ -324,9 +324,14 @@ public class Order : AuditedAggregateRoot<Guid>
+         AcceptedAt = now;
+         EstimatedReadyAt = now.AddMinutes(prepMinutes);
+ 
+-        // The estimate shown to the customer now follows the restaurant's own preparation time.
++        // The estimate shown to the customer now follows the restaurant's own preparation time:
++        // ready + TravelMinutes (which already holds the pickup buffer + ride; the window keeps its width).
++        // A scheduled order released early never arrives before the time the customer chose.
+         var range = EtaMaxAt - EtaMinAt;
+-        EtaMinAt = EstimatedReadyAt.Value.AddMinutes(TravelMinutes);
++        var etaMin = EstimatedReadyAt.Value.AddMinutes(TravelMinutes);
++        EtaMinAt = OrderType == OrderType.Scheduled && ScheduledFor.HasValue && ScheduledFor.Value > etaMin
++            ? ScheduledFor.Value
++            : etaMin;
+         EtaMaxAt = EtaMinAt + range;
+     }
+ 
+diff --git a/Saham/Entities/Pricing/EtaEstimator.cs b/Saham/Entities/Pricing/EtaEstimator.cs
+new file mode 100644
+index 0000000..4669361
+--- /dev/null
++++ b/Saham/Entities/Pricing/EtaEstimator.cs
+@@ -0,0 +1,136 @@
++using System;
++
++namespace Saham.Entities.Pricing;
++
++/// <summary>
++/// خوارزمية حتمية: نفس المدخلات تعطي نفس النتيجة، دون قاعدة بيانات أو ساعة داخلية.
++/// تستخدم مسافة المشروع الحالية؛ لا تدعي أنها مسافة طريق أو بيانات ازدحام حقيقية.
++/// </summary>
++public static class EtaEstimator
++{
++    public sealed record Policy(
++        decimal AverageSpeedKmh,
++        int PickupBufferMinutes,
++        int WindowMinutes,
++        int LateGraceMinutes);
++
++    public sealed record Estimate(
++        DateTime MinAt,
++        DateTime MaxAt,
++        DateTime LateAfter,
++        int TravelMinutes);
++
++    /// <summary>الخط الأساسي لعرض السعر، مطابق لصيغة المشروع الحالية.</summary>
++    public static Estimate ForQuote(
++        DateTime nowUtc, int prepMinutes, int distanceMeters,
++        Policy policy, DateTime? scheduledForUtc = null)
++    {
++        ValidateUtc(nowUtc, nameof(nowUtc));
++        Validate(policy);
++        NonNegative(prepMinutes, nameof(prepMinutes));
++        var travel = TravelMinutes(distanceMeters, policy.AverageSpeedKmh);
++
++        if (scheduledForUtc is { } scheduled)
++        {
++            ValidateUtc(scheduled, nameof(scheduledForUtc));
++            if (scheduled < nowUtc)
++                throw new ArgumentOutOfRangeException(nameof(scheduledForUtc));
++            // الموعد المجدول موعد وصول، وليس موعد بدء تجهيز.
++            return Build(scheduled, travel, policy);
++        }
++
++        var total = checked(prepMinutes + policy.PickupBufferMinutes + travel);
++        return Build(nowUtc.AddMinutes(total), travel, policy);
++    }
++
++    /// <summary>
++    /// بعد القبول: تجهيز الطعام ووصول السائق قد يحدثان بالتوازي.
++    /// إن لم يتوفر تقدير وصول موثوق، نستخدم هامش الاستلام بعد الجاهزية.
++    /// الممرر مسؤول عن استبعاد موقع قديم وعدم تمرير وقت وصول غير موثوق.
++    /// </summary>
++    public static Estimate BeforePickup(
++        DateTime nowUtc, DateTime readyAtUtc, int distanceMeters,
++        Policy policy, DateTime? driverArrivalAtUtc = null)
++    {
++        ValidateUtc(nowUtc, nameof(nowUtc));
++        ValidateUtc(readyAtUtc, nameof(readyAtUtc));
++        Validate(policy);
++        var travel = TravelMinutes(distanceMeters, policy.AverageSpeedKmh);
++        var ready = Later(nowUtc, readyAtUtc);
++        DateTime pickup;
++
++        if (driverArrivalAtUtc is { } arrival)
++        {
++            ValidateUtc(arrival, nameof(driverArrivalAtUtc));
++            // ننتظر الطرف الأبطأ؛ لا نجمع وقتي الانتظار ونحتسبهما مرتين.
++            pickup = Later(ready, Later(nowUtc, arrival));
++        }
++        else
++        {
++            pickup = ready.AddMinutes(policy.PickupBufferMinutes);
++        }
++
++        return Build(pickup.AddMinutes(travel), travel, policy);
++    }
++
++    /// <summary>بعد الاستلام: المسافة المتبقية فقط، دون تجهيز أو هامش استلام.</summary>
++    public static Estimate AfterPickup(DateTime nowUtc, int remainingDistanceMeters, Policy policy)
++    {
++        ValidateUtc(nowUtc, nameof(nowUtc));
++        Validate(policy);
++        var travel = TravelMinutes(remainingDistanceMeters, policy.AverageSpeedKmh);
++        return Build(nowUtc.AddMinutes(travel), travel, policy);
++    }
++
++    /// <summary>تقريب للأعلى حتى لا نحذف جزء دقيقة من الرحلة.</summary>
++    public static int TravelMinutes(int distanceMeters, decimal averageSpeedKmh)
++    {
++        NonNegative(distanceMeters, nameof(distanceMeters));
++        if (averageSpeedKmh <= 0)
++            throw new ArgumentOutOfRangeException(nameof(averageSpeedKmh));
++        return checked((int)decimal.Ceiling(distanceMeters * 60m / (averageSpeedKmh * 1000m)));
++    }
++
++    /// <summary>
++    /// BR-058: التأخر بعد الحد الأعلى + مهلة، وليس عند المساواة.
++    /// استدعها على نافذة محفوظة قبل إعادة الحساب كي لا يتحرك حد التأخر باستمرار.
++    /// إنشاء الحادثة والإشعار مرة واحدة مسؤولية معاملة التخزين، لا هذا الكلاس.
++    /// </summary>
++    public static bool IsLate(DateTime nowUtc, DateTime persistedMaxAtUtc,
++        int lateGraceMinutes, bool terminal)
++    {
++        ValidateUtc(nowUtc, nameof(nowUtc));
++        ValidateUtc(persistedMaxAtUtc, nameof(persistedMaxAtUtc));
++        NonNegative(lateGraceMinutes, nameof(lateGraceMinutes));
++        return !terminal && nowUtc > persistedMaxAtUtc.AddMinutes(lateGraceMinutes);
++    }
++
++    private static Estimate Build(DateTime min, int travel, Policy policy)
++    {
++        var max = min.AddMinutes(policy.WindowMinutes);
++        return new Estimate(min, max, max.AddMinutes(policy.LateGraceMinutes), travel);
++    }
++
++    private static DateTime Later(DateTime a, DateTime b) => a >= b ? a : b;
++
++    private static void Validate(Policy policy)
++    {
++        ArgumentNullException.ThrowIfNull(policy);
++        if (policy.AverageSpeedKmh <= 0)
++            throw new ArgumentOutOfRangeException(nameof(policy.AverageSpeedKmh));
++        NonNegative(policy.PickupBufferMinutes, nameof(policy.PickupBufferMinutes));
++        NonNegative(policy.WindowMinutes, nameof(policy.WindowMinutes));
++        NonNegative(policy.LateGraceMinutes, nameof(policy.LateGraceMinutes));
++    }
++
++    private static void NonNegative(int value, string name)
++    {
++        if (value < 0) throw new ArgumentOutOfRangeException(name);
++    }
++
++    private static void ValidateUtc(DateTime value, string name)
++    {
++        if (value.Kind != DateTimeKind.Utc)
++            throw new ArgumentException("An explicit UTC DateTime is required.", name);
++    }
++}
+diff --git a/Saham/Entities/Pricing/QuoteManager.cs b/Saham/Entities/Pricing/QuoteManager.cs
+index f2860c3..127ebc3 100644
+--- a/Saham/Entities/Pricing/QuoteManager.cs
++++ b/Saham/Entities/Pricing/QuoteManager.cs
+@@ -211,29 +211,36 @@ public class QuoteManager : DomainService
+         }
+     }
+ 
+-    /* Shown as a range (e.g. 35–45 min, REQ-CUS-03): preparation + pickup buffer + travel time
+-     * at an average speed; the upper bound is the "late" threshold (ASM-21). */
++    /* Shown as a range (e.g. 35–45 min, REQ-CUS-03), computed by EtaEstimator:
++     *   ASAP      — now + preparation + pickup buffer + ride; the range is EtaWindowMinutes wide;
++     *   scheduled — scheduledFor is the arrival time the customer chose (CheckOpeningAsync validated it).
++     * Lateness (BR-058) is eta_max + LateThresholdMinutes, judged by OrderTimeoutsWorker. */
+     private async Task<(DateTime Min, DateTime Max)> EstimateArrivalAsync(
+         Restaurant restaurant, int distanceM, OrderType orderType, DateTime? scheduledFor, DateTime now)
+     {
+-        var range = await _settingProvider.GetAsync<int>(SahamSettings.Orders.LateThresholdMinutes);
+-        if (orderType == OrderType.Scheduled && scheduledFor.HasValue)
+-        {
+-            return (scheduledFor.Value, scheduledFor.Value.AddMinutes(range));
+-        }
+-
+-        var min = now.AddMinutes(restaurant.DefaultPrepMinutes + await GetTravelMinutesAsync(distanceM));
+-        return (min, min.AddMinutes(range));
++        // Scheduled times reach here from the API or from the quotes table; both are UTC in this project
++        // (AbpClockOptions.Kind = Utc), so Normalize only labels an Unspecified value read back as UTC.
++        var estimate = EtaEstimator.ForQuote(Clock.Normalize(now), restaurant.DefaultPrepMinutes, distanceM, await GetEtaPolicyAsync(),
++            orderType == OrderType.Scheduled && scheduledFor.HasValue ? Clock.Normalize(scheduledFor.Value) : null);
++        return (estimate.MinAt, estimate.MaxAt);
+     }
+ 
+-    /* Minutes from "ready" to the customer's door: driver reaching the restaurant + the ride. */
++    /* What Order.TravelMinutes stores: minutes from "food ready" to the door = pickup buffer + ride.
++     * (EtaEstimator.TravelMinutes is the ride alone; the buffer is added here once, never in Order.Accept.) */
+     public async Task<int> GetTravelMinutesAsync(int distanceM)
+     {
+-        var speedKmh = await _settingProvider.GetAsync<int>(SahamSettings.Orders.AverageSpeedKmh);
+-        var buffer = await _settingProvider.GetAsync<int>(SahamSettings.Orders.PickupBufferMinutes);
+-        return buffer + (int)Math.Ceiling(distanceM / 1000d / Math.Max(1, speedKmh) * 60);
++        var policy = await GetEtaPolicyAsync();
++        return checked(policy.PickupBufferMinutes + EtaEstimator.TravelMinutes(distanceM, policy.AverageSpeedKmh));
+     }
+ 
++    /* A speed ≤ 0 or a negative minute setting is a configuration error and fails the request
++     * (no silent fallback to 1 km/h); EtaEstimator rejects it. */
++    private async Task<EtaEstimator.Policy> GetEtaPolicyAsync() => new(
++        await _settingProvider.GetAsync<int>(SahamSettings.Orders.AverageSpeedKmh),
++        await _settingProvider.GetAsync<int>(SahamSettings.Orders.PickupBufferMinutes),
++        await _settingProvider.GetAsync<int>(SahamSettings.Orders.EtaWindowMinutes),
++        await _settingProvider.GetAsync<int>(SahamSettings.Orders.LateThresholdMinutes));
++
+     /* Same item twice in the cart = one line with the summed quantity. */
+     private static List<(Guid MenuItemId, int Quantity)> MergeLines(IReadOnlyCollection<(Guid MenuItemId, int Quantity)> lines)
+     {
+diff --git a/Saham/Settings/SahamSettingDefinitionProvider.cs b/Saham/Settings/SahamSettingDefinitionProvider.cs
+index f8fe9f9..846b5be 100644
+--- a/Saham/Settings/SahamSettingDefinitionProvider.cs
++++ b/Saham/Settings/SahamSettingDefinitionProvider.cs
+@@ -21,7 +21,8 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
+         Add(context, SahamSettings.Orders.ItemDecisionMinutes, "5");           // DEC-10
+         Add(context, SahamSettings.Orders.MinPrepMinutes, "5");
+         Add(context, SahamSettings.Orders.MaxPrepMinutes, "120");
+-        Add(context, SahamSettings.Orders.LateThresholdMinutes, "10");         // ASM-21
++        Add(context, SahamSettings.Orders.LateThresholdMinutes, "10");         // ASM-21 / BR-058: late after eta_max + this
++        Add(context, SahamSettings.Orders.EtaWindowMinutes, "10");             // ETA window width (keeps the previous output)
+         Add(context, SahamSettings.Orders.QuoteLifetimeMinutes, "10");
+         Add(context, SahamSettings.Orders.BalanceLockTimeoutSeconds, "20"); // < 30 s command timeout
+         Add(context, SahamSettings.Orders.WalletPaymentTimeoutMinutes, "15");  // ASM-17
+diff --git a/Saham/Settings/SahamSettings.cs b/Saham/Settings/SahamSettings.cs
+index 10c172f..387cb2d 100644
+--- a/Saham/Settings/SahamSettings.cs
++++ b/Saham/Settings/SahamSettings.cs
+@@ -21,6 +21,8 @@ public static class SahamSettings
+         public const string MinPrepMinutes = Prefix + ".Orders.MinPrepMinutes";
+         public const string MaxPrepMinutes = Prefix + ".Orders.MaxPrepMinutes";
+         public const string LateThresholdMinutes = Prefix + ".Orders.LateThresholdMinutes";
++        // Width of the arrival window shown to the customer; independent of the late threshold (engineering choice).
++        public const string EtaWindowMinutes = Prefix + ".Orders.EtaWindowMinutes";
+         public const string QuoteLifetimeMinutes = Prefix + ".Orders.QuoteLifetimeMinutes";
+         // Longest wait for the customer balance lock and the coupon row lock before 409 "busy".
+         public const string BalanceLockTimeoutSeconds = Prefix + ".Orders.BalanceLockTimeoutSeconds";
+diff --git a/test/Saham.Eta.Tests/EtaEstimatorTests.cs b/test/Saham.Eta.Tests/EtaEstimatorTests.cs
+new file mode 100644
+index 0000000..ee98cfd
+--- /dev/null
++++ b/test/Saham.Eta.Tests/EtaEstimatorTests.cs
+@@ -0,0 +1,189 @@
++using System.Reflection;
++using Saham;
++using Saham.Entities.Orders;
++using Saham.Entities.Pricing;
++using Volo.Abp;
++using Xunit;
++
++namespace Saham.Eta.Tests;
++
++/* EtaEstimator and the ETA update in Order.Accept. No DB or ABP startup; the quote, worker and
++ * restart paths are covered by the integration run against saham_test. */
++public class EtaEstimatorTests
++{
++    private static readonly DateTime Noon = new(2026, 10, 12, 12, 0, 0, DateTimeKind.Utc);
++    // Reference: speed 20 km/h, pickup buffer 5, window 10, late grace 10.
++    private static readonly EtaEstimator.Policy Policy = new(20, 5, 10, 10);
++
++    [Fact]
++    public void Reference_example_asap()
++    {
++        var e = EtaEstimator.ForQuote(Noon, prepMinutes: 20, distanceMeters: 6_000, Policy);
++        Assert.Equal(18, e.TravelMinutes);
++        Assert.Equal(Noon.AddMinutes(43), e.MinAt);   // 12:43
++        Assert.Equal(Noon.AddMinutes(53), e.MaxAt);   // 12:53
++        Assert.Equal(Noon.AddMinutes(63), e.LateAfter); // late only after 13:03
++    }
++
++    [Fact]
++    public void Late_is_strictly_after_eta_max_plus_grace()
++    {
++        var max = Noon.AddMinutes(53);
++        Assert.False(EtaEstimator.IsLate(Noon.AddMinutes(63), max, 10, terminal: false));          // 13:03 exactly
++        Assert.True(EtaEstimator.IsLate(Noon.AddMinutes(63).AddTicks(1), max, 10, terminal: false));
++        Assert.True(EtaEstimator.IsLate(Noon.AddMinutes(64), max, 10, terminal: false));
++    }
++
++    [Fact]
++    public void Finished_orders_are_never_late()
++    {
++        Assert.False(EtaEstimator.IsLate(Noon.AddHours(5), Noon, 10, terminal: true));
++    }
++
++    [Fact]
++    public void Window_width_is_independent_of_the_late_grace()
++    {
++        var e = EtaEstimator.ForQuote(Noon, 20, 6_000, new EtaEstimator.Policy(20, 5, WindowMinutes: 10, LateGraceMinutes: 25));
++        Assert.Equal(TimeSpan.FromMinutes(10), e.MaxAt - e.MinAt);
++        Assert.Equal(e.MaxAt.AddMinutes(25), e.LateAfter);
++    }
++
++    [Theory]
++    [InlineData(0, 0)]
++    [InlineData(1, 1)]       // 0.003 min rounds up to 1
++    [InlineData(333, 1)]     // exactly 0.999 min
++    [InlineData(334, 2)]     // 1.002 min
++    [InlineData(6_000, 18)]
++    [InlineData(10_000, 30)]
++    public void Ride_minutes_round_up(int meters, int minutes)
++    {
++        Assert.Equal(minutes, EtaEstimator.TravelMinutes(meters, 20));
++    }
++
++    [Theory]
++    [InlineData(0)]
++    [InlineData(-5)]
++    public void Non_positive_speed_is_rejected_not_replaced(int speed)
++    {
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.TravelMinutes(1_000, speed));
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.ForQuote(Noon, 10, 1_000, new EtaEstimator.Policy(speed, 5, 10, 10)));
++    }
++
++    [Fact]
++    public void Negative_inputs_are_rejected()
++    {
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.TravelMinutes(-1, 20));
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.ForQuote(Noon, -1, 1_000, Policy));
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.ForQuote(Noon, 10, 1_000, new EtaEstimator.Policy(20, -1, 10, 10)));
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.ForQuote(Noon, 10, 1_000, new EtaEstimator.Policy(20, 5, -1, 10)));
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.IsLate(Noon, Noon, -1, false));
++    }
++
++    [Theory]
++    [InlineData(DateTimeKind.Local)]
++    [InlineData(DateTimeKind.Unspecified)]
++    public void Only_utc_times_are_accepted(DateTimeKind kind)
++    {
++        var t = new DateTime(2026, 10, 12, 12, 0, 0, kind);
++        Assert.Throws<ArgumentException>(() => EtaEstimator.ForQuote(t, 10, 1_000, Policy));
++        Assert.Throws<ArgumentException>(() => EtaEstimator.ForQuote(Noon, 10, 1_000, Policy, scheduledForUtc: t.AddHours(1)));
++        Assert.Throws<ArgumentException>(() => EtaEstimator.IsLate(Noon, t, 10, false));
++    }
++
++    [Fact]
++    public void Scheduled_time_is_the_arrival_time()
++    {
++        var at = Noon.AddHours(3);
++        var e = EtaEstimator.ForQuote(Noon, 20, 6_000, Policy, at);
++        Assert.Equal(at, e.MinAt);
++        Assert.Equal(at.AddMinutes(10), e.MaxAt);
++    }
++
++    [Fact]
++    public void Scheduled_time_in_the_past_is_rejected()
++    {
++        Assert.Throws<ArgumentOutOfRangeException>(() => EtaEstimator.ForQuote(Noon, 20, 6_000, Policy, Noon.AddMinutes(-1)));
++    }
++
++    [Fact]
++    public void Before_pickup_without_a_driver_estimate_adds_the_buffer_once()
++    {
++        var e = EtaEstimator.BeforePickup(Noon, readyAtUtc: Noon.AddMinutes(20), 6_000, Policy);
++        Assert.Equal(Noon.AddMinutes(20 + 5 + 18), e.MinAt);
++    }
++
++    [Fact]
++    public void Before_pickup_waits_for_the_slower_of_food_and_driver()
++    {
++        Assert.Equal(Noon.AddMinutes(30 + 18),
++            EtaEstimator.BeforePickup(Noon, Noon.AddMinutes(20), 6_000, Policy, driverArrivalAtUtc: Noon.AddMinutes(30)).MinAt);
++        Assert.Equal(Noon.AddMinutes(20 + 18),
++            EtaEstimator.BeforePickup(Noon, Noon.AddMinutes(20), 6_000, Policy, driverArrivalAtUtc: Noon.AddMinutes(5)).MinAt);
++    }
++
++    [Fact]
++    public void After_pickup_counts_only_the_remaining_ride()
++    {
++        Assert.Equal(Noon.AddMinutes(9), EtaEstimator.AfterPickup(Noon, 3_000, Policy).MinAt);
++    }
++
++    // ------------------------------------------------------------------ Order.Accept
++
++    [Fact]
++    public void Accept_moves_eta_to_ready_plus_buffer_and_ride_once()
++    {
++        // Quote at 12:00 with default prep 20: TravelMinutes = buffer 5 + ride 18 = 23; window 10.
++        var order = PlacedOrder(OrderType.Asap, travelMinutes: 23, etaMin: Noon.AddMinutes(43));
++        var acceptedAt = Noon.AddMinutes(2);
++        order.Accept(30, 5, 120, Guid.NewGuid(), acceptedAt, Guid.NewGuid);
++
++        Assert.Equal(OrderStatus.Accepted, order.Status);
++        Assert.Equal(acceptedAt.AddMinutes(30 + 23), order.EtaMinAt); // 12:55, not 13:00 (buffer once)
++        Assert.Equal(order.EtaMinAt.AddMinutes(10), order.EtaMaxAt);
++        Assert.Single(order.History);
++    }
++
++    [Fact]
++    public void Accept_never_moves_a_scheduled_order_before_its_time()
++    {
++        var scheduled = Noon.AddHours(2);
++        var order = PlacedOrder(OrderType.Scheduled, 23, scheduled, scheduled);
++        order.Accept(20, 5, 120, Guid.NewGuid(), Noon.AddMinutes(60), Guid.NewGuid); // ready 13:20 → 13:43 < 14:00
++        Assert.Equal(scheduled, order.EtaMinAt);
++        Assert.Equal(scheduled.AddMinutes(10), order.EtaMaxAt);
++    }
++
++    [Fact]
++    public void Accept_moves_a_late_scheduled_order_later()
++    {
++        var scheduled = Noon.AddHours(1);
++        var order = PlacedOrder(OrderType.Scheduled, 23, scheduled, scheduled);
++        order.Accept(60, 5, 120, Guid.NewGuid(), Noon.AddMinutes(10), Guid.NewGuid); // 12:10 + 60 + 23 = 13:33 > 13:00
++        Assert.Equal(Noon.AddMinutes(93), order.EtaMinAt);
++    }
++
++    [Fact]
++    public void Accept_outside_the_prep_range_changes_nothing()
++    {
++        var order = PlacedOrder(OrderType.Asap, 23, Noon.AddMinutes(43));
++        var error = Assert.Throws<BusinessException>(() => order.Accept(200, 5, 120, Guid.NewGuid(), Noon, Guid.NewGuid));
++        Assert.Equal(SahamErrorCodes.InvalidPrepMinutes, error.Code);
++        Assert.Equal(Noon.AddMinutes(43), order.EtaMinAt);
++        Assert.Equal(OrderStatus.Placed, order.Status);
++    }
++
++    private static Order PlacedOrder(OrderType type, int travelMinutes, DateTime etaMin, DateTime? scheduledFor = null)
++    {
++        var order = (Order)Activator.CreateInstance(typeof(Order), nonPublic: true)!;
++        Set(order, nameof(Order.Status), OrderStatus.Placed);
++        Set(order, nameof(Order.OrderType), type);
++        Set(order, nameof(Order.ScheduledFor), scheduledFor);
++        Set(order, nameof(Order.TravelMinutes), travelMinutes);
++        Set(order, nameof(Order.EtaMinAt), etaMin);
++        Set(order, nameof(Order.EtaMaxAt), etaMin.AddMinutes(10));
++        return order;
++    }
++
++    private static void Set(Order order, string property, object? value) =>
++        typeof(Order).GetProperty(property, BindingFlags.Instance | BindingFlags.Public)!.SetValue(order, value);
++}
+diff --git a/test/Saham.Eta.Tests/Saham.Eta.Tests.csproj b/test/Saham.Eta.Tests/Saham.Eta.Tests.csproj
+new file mode 100644
+index 0000000..4bffe1f
+--- /dev/null
++++ b/test/Saham.Eta.Tests/Saham.Eta.Tests.csproj
+@@ -0,0 +1,18 @@
++<Project Sdk="Microsoft.NET.Sdk">
++  <PropertyGroup>
++    <TargetFramework>net9.0</TargetFramework>
++    <Nullable>enable</Nullable>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <IsPackable>false</IsPackable>
++    <IsTestProject>true</IsTestProject>
++  </PropertyGroup>
++  <ItemGroup>
++    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
++    <PackageReference Include="xunit" Version="2.9.2" />
++    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
++      <PrivateAssets>all</PrivateAssets>
++      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
++    </PackageReference>
++    <ProjectReference Include="../../Saham/Saham.csproj" />
++  </ItemGroup>
++</Project>

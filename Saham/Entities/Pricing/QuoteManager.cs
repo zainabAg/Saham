@@ -211,28 +211,35 @@ public class QuoteManager : DomainService
         }
     }
 
-    /* Shown as a range (e.g. 35–45 min, REQ-CUS-03): preparation + pickup buffer + travel time
-     * at an average speed; the upper bound is the "late" threshold (ASM-21). */
+    /* Shown as a range (e.g. 35–45 min, REQ-CUS-03), computed by EtaEstimator:
+     *   ASAP      — now + preparation + pickup buffer + ride; the range is EtaWindowMinutes wide;
+     *   scheduled — scheduledFor is the arrival time the customer chose (CheckOpeningAsync validated it).
+     * Lateness (BR-058) is eta_max + LateThresholdMinutes, judged by OrderTimeoutsWorker. */
     private async Task<(DateTime Min, DateTime Max)> EstimateArrivalAsync(
         Restaurant restaurant, int distanceM, OrderType orderType, DateTime? scheduledFor, DateTime now)
     {
-        var range = await _settingProvider.GetAsync<int>(SahamSettings.Orders.LateThresholdMinutes);
-        if (orderType == OrderType.Scheduled && scheduledFor.HasValue)
-        {
-            return (scheduledFor.Value, scheduledFor.Value.AddMinutes(range));
-        }
-
-        var min = now.AddMinutes(restaurant.DefaultPrepMinutes + await GetTravelMinutesAsync(distanceM));
-        return (min, min.AddMinutes(range));
+        // Scheduled times reach here from the API or from the quotes table; both are UTC in this project
+        // (AbpClockOptions.Kind = Utc), so Normalize only labels an Unspecified value read back as UTC.
+        var estimate = EtaEstimator.ForQuote(Clock.Normalize(now), restaurant.DefaultPrepMinutes, distanceM, await GetEtaPolicyAsync(),
+            orderType == OrderType.Scheduled && scheduledFor.HasValue ? Clock.Normalize(scheduledFor.Value) : null);
+        return (estimate.MinAt, estimate.MaxAt);
     }
 
-    /* Minutes from "ready" to the customer's door: driver reaching the restaurant + the ride. */
+    /* What Order.TravelMinutes stores: minutes from "food ready" to the door = pickup buffer + ride.
+     * (EtaEstimator.TravelMinutes is the ride alone; the buffer is added here once, never in Order.Accept.) */
     public async Task<int> GetTravelMinutesAsync(int distanceM)
     {
-        var speedKmh = await _settingProvider.GetAsync<int>(SahamSettings.Orders.AverageSpeedKmh);
-        var buffer = await _settingProvider.GetAsync<int>(SahamSettings.Orders.PickupBufferMinutes);
-        return buffer + (int)Math.Ceiling(distanceM / 1000d / Math.Max(1, speedKmh) * 60);
+        var policy = await GetEtaPolicyAsync();
+        return checked(policy.PickupBufferMinutes + EtaEstimator.TravelMinutes(distanceM, policy.AverageSpeedKmh));
     }
+
+    /* A speed ≤ 0 or a negative minute setting is a configuration error and fails the request
+     * (no silent fallback to 1 km/h); EtaEstimator rejects it. */
+    private async Task<EtaEstimator.Policy> GetEtaPolicyAsync() => new(
+        await _settingProvider.GetAsync<int>(SahamSettings.Orders.AverageSpeedKmh),
+        await _settingProvider.GetAsync<int>(SahamSettings.Orders.PickupBufferMinutes),
+        await _settingProvider.GetAsync<int>(SahamSettings.Orders.EtaWindowMinutes),
+        await _settingProvider.GetAsync<int>(SahamSettings.Orders.LateThresholdMinutes));
 
     /* Same item twice in the cart = one line with the summed quantity. */
     private static List<(Guid MenuItemId, int Quantity)> MergeLines(IReadOnlyCollection<(Guid MenuItemId, int Quantity)> lines)

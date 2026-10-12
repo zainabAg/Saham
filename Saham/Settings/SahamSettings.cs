@@ -21,6 +21,8 @@ public static class SahamSettings
         public const string MinPrepMinutes = Prefix + ".Orders.MinPrepMinutes";
         public const string MaxPrepMinutes = Prefix + ".Orders.MaxPrepMinutes";
         public const string LateThresholdMinutes = Prefix + ".Orders.LateThresholdMinutes";
+        // Width of the arrival window shown to the customer; independent of the late threshold (engineering choice).
+        public const string EtaWindowMinutes = Prefix + ".Orders.EtaWindowMinutes";
         public const string QuoteLifetimeMinutes = Prefix + ".Orders.QuoteLifetimeMinutes";
         // Longest wait for the customer balance lock and the coupon row lock before 409 "busy".
         public const string BalanceLockTimeoutSeconds = Prefix + ".Orders.BalanceLockTimeoutSeconds";

@@ -113,7 +113,7 @@ public class OrderTimeoutsWorker : AsyncPeriodicBackgroundWorkerBase
             var late = await asyncExecuter.ToListAsync((await orders.GetQueryableAsync())
                 .Where(o => (o.Status == OrderStatus.Placed || o.Status == OrderStatus.Accepted ||
                              o.Status == OrderStatus.Ready || o.Status == OrderStatus.PickedUp) &&
-                            o.EtaMaxAt <= lateBefore &&
+                            o.EtaMaxAt < lateBefore && // BR-058: late after eta_max + grace, not at it (EtaEstimator.IsLate)
                             !allIncidents.Any(i => i.OrderId == o.Id && i.IncidentType == IncidentType.OrderLate))
                 .OrderBy(o => o.PlacedAt)
                 .Select(o => new { o.Id, o.RestaurantId })
