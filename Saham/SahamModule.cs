@@ -372,6 +372,8 @@ public class SahamModule : AbpModule
 
             // Orders
             options.Map(SahamErrorCodes.PriceChanged, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.CustomerBalanceReservationConflict, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.CustomerBalanceBusy, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.OrderOnHold, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.NoItemDecisionPending, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.CustomerCannotCancel, HttpStatusCode.Conflict);

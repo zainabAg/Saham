@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Saham.Entities.Coupons;
+using Saham.Entities.Customers;
 using Saham.Entities.Dispatch;
 using Saham.Entities.Drivers;
 using Saham.Entities.Orders;
@@ -24,7 +25,16 @@ namespace Saham.Entities.Ledger;
  *                                   then the wallet refund of what is left (BR-041); coupon released
  *                                   (consumed for a late customer cancellation, BR-011);
  *   items removed / replaced      → the wallet difference refunded, the coupon amount updated (BR-048).
- * Every entry has its idempotency key, so a replayed event never posts twice (INV-03, INV-09). */
+ * Every entry has its idempotency key, so a replayed event never posts twice (INV-03, INV-09).
+ *
+ * The customer's credit/debt reservation follows what was actually posted, in the same transaction:
+ *   consumed — J-CASH-DELIVERED / J-WALLET-DELIVERED (also wallet "not received") post CreditApplied
+ *              and DebtCollected to CUSTOMER_BALANCE;
+ *   released — every other end: cash "not received" (J-NOT-RECEIVED charges T, the credit and debt stay),
+ *              driver incident, delivery failures settled case by case, all cancellations
+ *              (incl. payment failed / timeout and late customer cancellation).
+ * A wallet capture alone consumes nothing. All of it runs under the customer's balance lock, taken
+ * before the first posting. */
 public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITransientDependency
 {
     private readonly IRepository<Order, Guid> _orderRepository;
@@ -36,6 +46,8 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
     private readonly PaymentManager _paymentManager;
     private readonly CouponManager _couponManager;
     private readonly CashManager _cashManager;
+    private readonly CustomerBalanceLock _balanceLock;
+    private readonly CustomerBalanceReservationManager _reservations;
 
     public LedgerOrderEventHandler(
         IRepository<Order, Guid> orderRepository,
@@ -46,8 +58,12 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
         PaymentPostingService paymentPosting,
         PaymentManager paymentManager,
         CouponManager couponManager,
-        CashManager cashManager)
+        CashManager cashManager,
+        CustomerBalanceLock balanceLock,
+        CustomerBalanceReservationManager reservations)
     {
+        _balanceLock = balanceLock;
+        _reservations = reservations;
         _orderRepository = orderRepository;
         _assignmentRepository = assignmentRepository;
         _driverRepository = driverRepository;
@@ -63,9 +79,12 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
     {
         if (e.EventType == OrderEventType.Modified)
         {
+            await _balanceLock.AcquireAsync(e.CustomerId);
             var modified = await _orderRepository.GetAsync(e.OrderId, includeDetails: false);
             await _couponManager.UpdateAmountAsync(modified.Id, modified.DiscountAmount);
             await _paymentManager.SyncRefundsAsync(modified, RefundReason.Modification);
+            await _reservations.SyncWithOrderAsync(modified);
+            await _reservations.CheckConsistencyAsync(modified.CustomerId, modified.Id);
             return;
         }
 
@@ -75,6 +94,7 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
             return;
         }
 
+        await _balanceLock.AcquireAsync(e.CustomerId);
         var order = await _orderRepository.GetAsync(e.OrderId, includeDetails: false);
         switch (order.Status)
         {
@@ -88,6 +108,8 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
                 await PostCancelledAsync(order);
                 break;
         }
+
+        await _reservations.CheckConsistencyAsync(order.CustomerId, order.Id);
     }
 
     private async Task PostDeliveredAsync(Order order)
@@ -95,6 +117,8 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
         var assignment = await FindFinishedAssignmentAsync(order.Id);
         if (assignment == null)
         {
+            // Nothing was posted, so the credit and debt are still in CUSTOMER_BALANCE.
+            await _reservations.ReleaseAsync(order, "DELIVERED_NOT_POSTED");
             return;
         }
 
@@ -110,6 +134,7 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
 
         await _posting.PostDriverPayAsync(order, assignment.DriverId, assignment.DriverPayAmount);
         await _couponManager.ConsumeAsync(order.Id);
+        await _reservations.ConsumeAsync(order, "DELIVERED");
         if (order.PaymentMethod == PaymentMethod.Cash)
         {
             await _cashManager.CheckCapAsync(await _driverRepository.GetAsync(assignment.DriverId));
@@ -125,10 +150,12 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
                 if (order.PaymentMethod == PaymentMethod.Wallet)
                 {
                     await _paymentPosting.PostWalletDeliveredAsync(order, notReceived: true);
+                    await _reservations.ConsumeAsync(order, "NOT_RECEIVED_WALLET");
                 }
                 else
                 {
                     await _posting.PostNotReceivedAsync(order);
+                    await _reservations.ReleaseAsync(order, "NOT_RECEIVED_CASH");
                 }
 
                 if (assignment != null)
@@ -144,10 +171,15 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
                 await _posting.PostDriverIncidentAsync(order);
                 await _paymentManager.SyncRefundsAsync(order, RefundReason.Cancellation);
                 await _couponManager.ReleaseAsync(order.Id);
+                await _reservations.ReleaseAsync(order, "DRIVER_INCIDENT");
                 break;
 
             // QUALITY_REFUSAL / ADDRESS_NOT_FOUND: who pays is decided case by case through a complaint
-            // and an approved adjustment (BR-063 §2), not automatically.
+            // and an approved adjustment (BR-063 §2), not automatically. None of the order's credit or
+            // debt is posted, so its hold is released; an adjustment posts on its own.
+            default:
+                await _reservations.ReleaseAsync(order, "FAILED_" + order.FailureReason);
+                break;
         }
     }
 
@@ -185,6 +217,9 @@ public class LedgerOrderEventHandler : ILocalEventHandler<OrderChangedEto>, ITra
         {
             await _couponManager.ReleaseAsync(order.Id);
         }
+
+        // No cancellation entry posts CreditApplied or DebtCollected (a late cancellation charges S − K on its own).
+        await _reservations.ReleaseAsync(order, "CANCELLED_" + order.CancelReason);
     }
 
     private async Task<DeliveryAssignment?> FindFinishedAssignmentAsync(Guid orderId)

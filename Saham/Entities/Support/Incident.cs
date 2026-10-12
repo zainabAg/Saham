@@ -24,6 +24,7 @@ public enum IncidentType
     PaymentAmountMismatch = 14, // UC-05 E5
     CouponRequested = 15,       // BR-072: a restaurant asks the owner for a coupon
     ContactRequest = 16,        // TD-03: the driver asks ops to call the customer
+    CustomerBalanceOvercommitted = 17, // BR-064/071: open orders hold more balance/debt than the ledger has
     Other = 99
 }
 

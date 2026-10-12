@@ -30,6 +30,7 @@ public class SahamDbContext : AbpDbContext<SahamDbContext>
     // M01 Identity & Access
     public DbSet<OtpChallenge> OtpChallenges { get; set; }
     public DbSet<CustomerProfile> CustomerProfiles { get; set; }
+    public DbSet<CustomerBalanceReservation> CustomerBalanceReservations { get; set; }
     public DbSet<RestaurantStaff> RestaurantStaff { get; set; }
 
     // M02 Catalog

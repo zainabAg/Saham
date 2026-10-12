@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Saham.Entities.Customers;
 using Saham.Entities.Dispatch;
 using Saham.Entities.Drivers;
 using Saham.Entities.Orders;
@@ -28,6 +29,7 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
     private readonly IRepository<Driver, Guid> _driverRepository;
     private readonly IRepository<Volo.Abp.Identity.IdentityUser, Guid> _userRepository;
     private readonly Entities.Payments.PaymentManager _paymentManager;
+    private readonly CustomerBalanceReservationManager _reservationManager;
 
     public CustomerOrderAppService(
         IRepository<Order, Guid> orderRepository,
@@ -36,8 +38,10 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
         DeliveryManager deliveryManager,
         IRepository<Driver, Guid> driverRepository,
         IRepository<Volo.Abp.Identity.IdentityUser, Guid> userRepository,
-        Entities.Payments.PaymentManager paymentManager)
+        Entities.Payments.PaymentManager paymentManager,
+        CustomerBalanceReservationManager reservationManager)
     {
+        _reservationManager = reservationManager;
         _paymentManager = paymentManager;
         _orderRepository = orderRepository;
         _orderManager = orderManager;
@@ -62,6 +66,9 @@ public class CustomerOrderAppService : SahamAppService, ICustomerOrderAppService
             input.RecipientPhone);
 
         await _orderRepository.InsertAsync(order, autoSave: true); // autoSave: the number comes from a DB sequence
+        // The credit/debt the order froze, held under the lock taken by CreateFromQuoteAsync. A failure
+        // anywhere in this request rolls back the order and the hold together.
+        await _reservationManager.ReserveAsync(order);
 
         // UC-05: a wallet order opens the provider's payment session; the app sends the customer there.
         await _paymentManager.StartAsync(order);

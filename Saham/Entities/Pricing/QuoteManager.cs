@@ -21,7 +21,9 @@ namespace Saham.Entities.Pricing;
  *   distance ≤ plan maximum (10 km)                           (BR-007)
  *   every item active and available in this restaurant       (BR-003)
  *   items subtotal ≥ restaurant minimum                       (BR-004)
- * then prices it with the active plan and the customer's balance (BR-064, BR-071). */
+ * then prices it with the active plan and the customer's balance (BR-064, BR-071): the ledger
+ * balance minus what other open orders already hold. A quote holds nothing; OrderManager plans
+ * again under the customer lock and reserves the result with the order. */
 public class QuoteManager : DomainService
 {
     public const int MaxQuantityPerLine = 99;
@@ -33,7 +35,7 @@ public class QuoteManager : DomainService
     private readonly IRepository<CustomerProfile, Guid> _customerProfileRepository;
     private readonly PricingPlanManager _pricingPlanManager;
     private readonly PricingCalculator _calculator;
-    private readonly ICustomerBalanceProvider _balanceProvider;
+    private readonly CustomerBalanceReservationManager _reservationManager;
     private readonly ISettingProvider _settingProvider;
     private readonly Coupons.CouponManager _couponManager;
 
@@ -45,7 +47,7 @@ public class QuoteManager : DomainService
         IRepository<CustomerProfile, Guid> customerProfileRepository,
         PricingPlanManager pricingPlanManager,
         PricingCalculator calculator,
-        ICustomerBalanceProvider balanceProvider,
+        CustomerBalanceReservationManager reservationManager,
         ISettingProvider settingProvider,
         Coupons.CouponManager couponManager)
     {
@@ -57,7 +59,7 @@ public class QuoteManager : DomainService
         _customerProfileRepository = customerProfileRepository;
         _pricingPlanManager = pricingPlanManager;
         _calculator = calculator;
-        _balanceProvider = balanceProvider;
+        _reservationManager = reservationManager;
         _settingProvider = settingProvider;
     }
 
@@ -151,8 +153,7 @@ public class QuoteManager : DomainService
             restaurantDiscount: couponSnapshot?.FundedBy == Coupons.CouponFundedBy.Restaurant ? couponAmount : 0,
             couponBlocksFreeDelivery: couponSnapshot is { StackableWithFreeDelivery: false });
 
-        var balance = await _balanceProvider.GetBalanceAsync(customerId);
-        var (debt, credit, amountDue) = _calculator.ApplyBalance(breakdown.TotalAmount, balance);
+        var balance = await _reservationManager.PlanAsync(customerId, breakdown.TotalAmount);
         var profile = await _customerProfileRepository.FindAsync(customerId);
 
         var (etaMin, etaMax) = await EstimateArrivalAsync(restaurant, distanceM, orderType, scheduledFor, now);
@@ -170,9 +171,9 @@ public class QuoteManager : DomainService
                 address.RecipientPhone),
             lineSnapshots,
             breakdown,
-            debt,
-            credit,
-            amountDue,
+            balance.DebtCollected,
+            balance.CreditApplied,
+            balance.AmountDue,
             CashAllowed: profile is not { CashDisabled: true },
             etaMin,
             etaMax,

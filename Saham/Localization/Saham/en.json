@@ -171,6 +171,8 @@
     "Saham:PriceChanged": "Prices or availability changed. Please review the new total: {newAmountDue} IQD.",
     "Saham:WalletNotAvailable": "Wallet payment is not available yet. Please pay cash.",
     "Saham:CashNotAllowed": "Cash payment is disabled on your account after two undelivered orders.",
+    "Saham:CustomerBalanceReservationConflict": "Your balance is held by other open orders and needs a review. Try again once they finish, or contact support.",
+    "Saham:CustomerBalanceBusy": "Another operation on your balance is in progress. Please try again in a moment.",
     "Saham:CashTenderedTooLow": "The banknote must cover the amount due ({amountDue} IQD).",
     "Saham:CustomerCannotCancel": "The restaurant has already accepted the order. Contact support to cancel.",
     "Saham:CancelNoteRequired": "A reason is required.",

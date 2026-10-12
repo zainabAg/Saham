@@ -83,15 +83,6 @@ public class PricingCalculator : ISingletonDependency
             freeDeliveryRemaining);
     }
 
-    /* amount_due = T + debt − credit (BR-064, BR-071). The credit is used only up to what is owed,
-     * and is never paid out in cash (ASM-31). */
-    public (long DebtCollected, long CreditApplied, long AmountDue) ApplyBalance(long total, long customerBalance)
-    {
-        var debt = customerBalance < 0 ? -customerBalance : 0;
-        var credit = customerBalance > 0 ? Math.Min(customerBalance, total + debt) : 0;
-        return (debt, credit, total + debt - credit);
-    }
-
     /* ASM-28 / BR-062: half-up rounding to the nearest dinar, for non-negative amounts. */
     public static long RoundHalfUp(long numerator, long denominator)
     {

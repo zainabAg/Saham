@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Dependency-free console tests of the production calculator (from the Phase 2 package).
+       They prove arithmetic/policy only, not database concurrency. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Saham/Entities/Customers/CustomerBalanceReservationCalculator.cs" Link="CustomerBalanceReservationCalculator.cs" />
+  </ItemGroup>
+</Project>

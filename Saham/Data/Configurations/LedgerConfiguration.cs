@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Saham.Entities.Customers;
 using Saham.Entities.Dispatch;
 using Saham.Entities.Drivers;
 using Saham.Entities.Ledger;
 using Saham.Entities.Orders;
 using Saham.Entities.Support;
 using Volo.Abp.EntityFrameworkCore.Modeling;
+using IdentityUser = Volo.Abp.Identity.IdentityUser;
 
 namespace Saham.Data.Configurations;
 
@@ -66,6 +68,31 @@ public static class LedgerConfiguration
             b.HasOne<Driver>().WithMany().HasForeignKey(x => x.DriverId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<JournalEntry>().WithOne().HasForeignKey<CashMovement>(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.DriverId, x.BusinessDate });
+        });
+
+        // Credit / debt promised to open orders (BR-064, BR-071): not ledger entries, never revenue.
+        builder.Entity<CustomerBalanceReservation>(b =>
+        {
+            b.ToTable(SahamDbContext.DbTablePrefix + "CustomerBalanceReservations", SahamDbContext.DbSchema, t =>
+            {
+                t.HasCheckConstraint("CK_CustomerBalanceReservations_NonNegative",
+                    "\"CreditApplied\" >= 0 AND \"DebtCollected\" >= 0");
+                // One signed balance gives an order credit or debt, never both.
+                t.HasCheckConstraint("CK_CustomerBalanceReservations_OneKind",
+                    "NOT (\"CreditApplied\" > 0 AND \"DebtCollected\" > 0)");
+                t.HasCheckConstraint("CK_CustomerBalanceReservations_Finalized",
+                    "(\"Status\" = 'Active') = (\"FinalizedAt\" IS NULL)");
+            });
+            b.ConfigureByConvention();
+            b.Property(x => x.Status).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.Property(x => x.Source).HasConversion<string>().HasMaxLength(SahamConsts.EnumMaxLength);
+            b.Property(x => x.FinalizeReason).HasMaxLength(CustomerBalanceReservation.ReasonMaxLength);
+            b.HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<IdentityUser>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.OrderId).IsUnique(); // one hold per order, ever
+            // What every allocation reads: the customer's active holds.
+            b.HasIndex(x => x.CustomerId).HasFilter("\"Status\" = 'Active'")
+                .HasDatabaseName("IX_AppCustomerBalanceReservations_ActiveByCustomer");
         });
 
         builder.Entity<ContactAttempt>(b =>

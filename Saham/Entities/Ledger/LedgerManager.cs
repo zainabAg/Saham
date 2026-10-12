@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Saham.Entities.Customers;
 using Saham.Entities.Geography;
 using Saham.Settings;
 using Volo.Abp.Domain.Repositories;
@@ -21,6 +22,7 @@ public class LedgerManager : DomainService
     private readonly IRepository<City, Guid> _cityRepository;
     private readonly ISettingProvider _settingProvider;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
+    private readonly CustomerBalanceLock _customerBalanceLock;
 
     public LedgerManager(
         IRepository<LedgerAccount, Guid> accountRepository,
@@ -28,8 +30,10 @@ public class LedgerManager : DomainService
         IRepository<JournalLine, Guid> lineRepository,
         IRepository<City, Guid> cityRepository,
         ISettingProvider settingProvider,
-        IUnitOfWorkManager unitOfWorkManager)
+        IUnitOfWorkManager unitOfWorkManager,
+        CustomerBalanceLock customerBalanceLock)
     {
+        _customerBalanceLock = customerBalanceLock;
         _accountRepository = accountRepository;
         _entryRepository = entryRepository;
         _lineRepository = lineRepository;
@@ -86,7 +90,9 @@ public class LedgerManager : DomainService
 
     // ------------------------------------------------------------------ posting
 
-    /* Posts a balanced entry once. A repeated key returns the entry already posted (no second posting). */
+    /* Posts a balanced entry once. A repeated key returns the entry already posted (no second posting).
+     * An entry touching a customer's CUSTOMER_BALANCE needs that customer's balance lock (BR-064/071):
+     * otherwise an order being created could plan against the balance this entry changes. */
     public async Task<JournalEntry> PostAsync(
         JournalEntryType entryType,
         JournalSourceType sourceType,
@@ -103,12 +109,27 @@ public class LedgerManager : DomainService
             return existing;
         }
 
+        var lineList = lines.ToList();
+        await EnsureCustomerBalanceLockedAsync(lineList.Select(l => l.AccountId).Distinct().ToList());
+
         var entry = new JournalEntry(GuidGenerator.Create(), entryType, sourceType, sourceId, idempotencyKey,
-            description, businessDate, Clock.Now, createdBy, lines, GuidGenerator.Create);
+            description, businessDate, Clock.Now, createdBy, lineList, GuidGenerator.Create);
 
         // Flushed at once (same transaction) so balance checks right after the posting see it,
         // e.g. the cash cap after a delivery. The balance trigger still runs at commit.
         return await _entryRepository.InsertAsync(entry, autoSave: true);
+    }
+
+    private async Task EnsureCustomerBalanceLockedAsync(List<Guid> accountIds)
+    {
+        var accounts = await _accountRepository.GetQueryableAsync();
+        var customers = await AsyncExecuter.ToListAsync(accounts
+            .Where(a => accountIds.Contains(a.Id) && a.Code == LedgerAccountCode.CustomerBalance && a.PartyId != null)
+            .Select(a => a.PartyId!.Value));
+        foreach (var customerId in customers)
+        {
+            _customerBalanceLock.EnsureHeld(customerId);
+        }
     }
 
     // ------------------------------------------------------------------ balances

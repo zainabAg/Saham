@@ -62,6 +62,9 @@ public static class SahamErrorCodes
     public const string WalletNotAvailable = Prefix + "WalletNotAvailable";
     public const string CashNotAllowed = Prefix + "CashNotAllowed";
     public const string CashTenderedTooLow = Prefix + "CashTenderedTooLow";
+    // BR-064/BR-071: the balance is promised to open orders beyond what the ledger holds
+    public const string CustomerBalanceReservationConflict = Prefix + "CustomerBalanceReservationConflict";
+    public const string CustomerBalanceBusy = Prefix + "CustomerBalanceBusy";
     public const string CustomerCannotCancel = Prefix + "CustomerCannotCancel";
     public const string CancelNoteRequired = Prefix + "CancelNoteRequired";
     public const string OrderOnHold = Prefix + "OrderOnHold";

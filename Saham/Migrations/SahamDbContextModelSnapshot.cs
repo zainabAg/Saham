@@ -208,6 +208,87 @@ namespace Saham.Migrations
                     b.ToTable("AppCouponRedemptions", (string)null);
                 });
 
+            modelBuilder.Entity("Saham.Entities.Customers.CustomerBalanceReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<long>("CreditApplied")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("DebtCollected")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("FinalizeReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("FinalizedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("IX_AppCustomerBalanceReservations_ActiveByCustomer")
+                        .HasFilter("\"Status\" = 'Active'");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("AppCustomerBalanceReservations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerBalanceReservations_Finalized", "(\"Status\" = 'Active') = (\"FinalizedAt\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_CustomerBalanceReservations_NonNegative", "\"CreditApplied\" >= 0 AND \"DebtCollected\" >= 0");
+
+                            t.HasCheckConstraint("CK_CustomerBalanceReservations_OneKind", "NOT (\"CreditApplied\" > 0 AND \"DebtCollected\" > 0)");
+                        });
+                });
+
             modelBuilder.Entity("Saham.Entities.Customers.CustomerProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4716,6 +4797,21 @@ namespace Saham.Migrations
                         .IsUnique();
 
                     b.ToTable("AbpSettingDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("Saham.Entities.Customers.CustomerBalanceReservation", b =>
+                {
+                    b.HasOne("Volo.Abp.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Saham.Entities.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Saham.Entities.Dispatch.DeliveryAssignment", b =>

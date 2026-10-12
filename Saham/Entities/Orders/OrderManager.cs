@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Saham.Entities.Customers;
 using Saham.Entities.Pricing;
 using Saham.Entities.Restaurants;
 using Saham.Identity;
@@ -20,7 +21,10 @@ namespace Saham.Entities.Orders;
  *     customer saw, a fresh quote is saved and PRICE_CHANGED is returned (SRS 6-A);
  *   - cash only when allowed (BR-065), and the banknote must cover the amount (UC A4);
  *   - a wallet order waits in PendingPayment until the provider captures it (UC-05, PaymentManager);
- *   - the coupon is reserved in the same transaction (BR-010), so its last use is taken once. */
+ *   - the coupon is reserved in the same transaction (BR-010), so its last use is taken once;
+ *   - everything runs under the customer's balance lock, taken before the quote and the balance are
+ *     read: two orders of one customer cannot spend the same credit or collect the same debt. The
+ *     caller saves the order and its reservation (CustomerBalanceReservationManager) in this transaction. */
 public class OrderManager : DomainService
 {
     private readonly IRepository<Quote, Guid> _quoteRepository;
@@ -29,6 +33,7 @@ public class OrderManager : DomainService
     private readonly ISettingProvider _settingProvider;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
     private readonly Coupons.CouponManager _couponManager;
+    private readonly CustomerBalanceLock _balanceLock;
 
     public OrderManager(
         IRepository<Quote, Guid> quoteRepository,
@@ -36,8 +41,10 @@ public class OrderManager : DomainService
         QuoteManager quoteManager,
         ISettingProvider settingProvider,
         IUnitOfWorkManager unitOfWorkManager,
-        Coupons.CouponManager couponManager)
+        Coupons.CouponManager couponManager,
+        CustomerBalanceLock balanceLock)
     {
+        _balanceLock = balanceLock;
         _couponManager = couponManager;
         _unitOfWorkManager = unitOfWorkManager;
         _quoteRepository = quoteRepository;
@@ -54,6 +61,8 @@ public class OrderManager : DomainService
         string? recipientName,
         string? recipientPhone)
     {
+        // First: every read below must see what the previous holder of this lock committed.
+        await _balanceLock.AcquireAsync(customerId);
         var now = Clock.Now;
 
         var quote = await _quoteRepository.GetAsync(quoteId);
@@ -77,7 +86,8 @@ public class OrderManager : DomainService
             throw new BusinessException(SahamErrorCodes.WalletNotAvailable);
         }
 
-        // Re-validate and re-price with today's data: restaurant open, items available, prices, plan, balance.
+        // Re-validate and re-price with today's data: restaurant open, items available, prices, plan,
+        // balance net of the other orders' holds, cash ban.
         var fresh = await _quoteManager.CreateAsync(
             customerId,
             quote.RestaurantId,
@@ -87,9 +97,15 @@ public class OrderManager : DomainService
             quote.ScheduledFor,
             quote.Snapshot.Coupon?.Code);
 
-        if (fresh.PayloadHash != quote.PayloadHash)
+        // The hash covers DebtCollected, CreditApplied and AmountDue; compared here as well so a change of
+        // what the hash includes can never freeze money the customer did not agree to.
+        if (fresh.PayloadHash != quote.PayloadHash ||
+            fresh.Snapshot.DebtCollected != quote.Snapshot.DebtCollected ||
+            fresh.Snapshot.CreditApplied != quote.Snapshot.CreditApplied ||
+            fresh.Snapshot.AmountDue != quote.Snapshot.AmountDue)
         {
             // Saved in its own transaction: the error below rolls back the order transaction.
+            // That transaction only inserts a quote; it never asks for the balance lock held here.
             using (var uow = _unitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
             {
                 await _quoteRepository.InsertAsync(fresh);
@@ -101,7 +117,7 @@ public class OrderManager : DomainService
                 .WithData("newAmountDue", fresh.AmountDue);
         }
 
-        if (paymentMethod == PaymentMethod.Cash && !quote.Snapshot.CashAllowed)
+        if (paymentMethod == PaymentMethod.Cash && !fresh.Snapshot.CashAllowed) // BR-065: the ban as of now
         {
             throw new BusinessException(SahamErrorCodes.CashNotAllowed);
         }
