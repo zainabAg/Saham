@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Saham.Entities.Orders;
 using Saham.Entities.Payments;
 using Saham.Identity;
+using Saham.Infrastructure.Idempotency;
 using Saham.Permissions;
 using Saham.Services.Dtos.Finance;
 using Volo.Abp.Application.Dtos;
@@ -67,6 +68,7 @@ public class RefundAppService : SahamAppService, IRefundAppService
         return (await MapAsync(new List<Refund> { refund })).Single();
     }
 
+    [Idempotent]
     [Authorize(SahamPermissions.Refunds.ExecuteReal)]
     public async Task<RefundDto> ResolveManuallyAsync(Guid id, ResolveRefundDto input)
     {

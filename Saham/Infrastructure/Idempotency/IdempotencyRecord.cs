@@ -3,8 +3,9 @@ using Volo.Abp.Domain.Entities;
 
 namespace Saham.Infrastructure.Idempotency;
 
-/* Stores the first response of a request sent with an Idempotency-Key header
- * (SRS EX-11, table idempotency_keys). Unique on (UserId, Scope, Key). */
+/* Stores the first successful response of a request sent with an Idempotency-Key header
+ * (SRS EX-11, table idempotency_keys). Unique on (UserId, Scope, Key). Since Phase 5 a row is written
+ * only as Completed, in the same transaction as the operation; "in progress" is the advisory lock. */
 public class IdempotencyRecord : Entity<Guid>
 {
     public Guid UserId { get; private set; }
@@ -27,27 +28,23 @@ public class IdempotencyRecord : Entity<Guid>
     {
     }
 
-    public IdempotencyRecord(Guid id, Guid userId, string scope, string key, string requestHash, DateTime now)
+    public IdempotencyRecord(Guid id, Guid userId, string scope, string key, string requestHash,
+        int statusCode, string? responseBody, DateTime now)
         : base(id)
     {
         UserId = userId;
         Scope = scope;
         Key = key;
         RequestHash = requestHash;
-        Status = IdempotencyStatus.InProgress;
-        CreationTime = now;
-    }
-
-    public void Complete(int statusCode, string? responseBody)
-    {
         Status = IdempotencyStatus.Completed;
         ResponseStatusCode = statusCode;
         ResponseBody = responseBody;
+        CreationTime = now;
     }
 }
 
 public enum IdempotencyStatus
 {
-    InProgress = 0,
+    InProgress = 0, // only rows left by the pre-Phase-5 filter; removed when their key is used again
     Completed = 1
 }

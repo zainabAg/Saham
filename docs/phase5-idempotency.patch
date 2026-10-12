@@ -1,0 +1,618 @@
+diff --git a/Saham/BackgroundWorkers/HousekeepingWorker.cs b/Saham/BackgroundWorkers/HousekeepingWorker.cs
+index af6cb99..5cfb1e3 100644
+--- a/Saham/BackgroundWorkers/HousekeepingWorker.cs
++++ b/Saham/BackgroundWorkers/HousekeepingWorker.cs
+@@ -21,6 +21,7 @@ public class HousekeepingWorker : AsyncPeriodicBackgroundWorkerBase
+         : base(timer, serviceScopeFactory)
+     {
+         Timer.Period = (int)TimeSpan.FromHours(1).TotalMilliseconds;
++        Timer.RunOnStart = true; // also right after a (re)start, not only an hour later
+     }
+ 
+     protected override async Task DoWorkAsync(PeriodicBackgroundWorkerContext workerContext)
+@@ -30,6 +31,8 @@ public class HousekeepingWorker : AsyncPeriodicBackgroundWorkerBase
+         var clock = services.GetRequiredService<IClock>();
+         var settings = services.GetRequiredService<ISettingProvider>();
+ 
++        // EX-11: kept 7 days. After deletion a reused key runs again: the lasting guards are the business ones
++        // (one order per quote, state transitions, unique ledger keys), not this table.
+         var retentionDays = await settings.GetAsync<int>(SahamSettings.System.IdempotencyRetentionDays);
+         var idempotencyCutoff = clock.Now.AddDays(-retentionDays);
+         await services.GetRequiredService<IRepository<IdempotencyRecord, Guid>>()
+diff --git a/Saham/Infrastructure/Idempotency/IdempotencyActionFilter.cs b/Saham/Infrastructure/Idempotency/IdempotencyActionFilter.cs
+index 6e89ba8..f749c6e 100644
+--- a/Saham/Infrastructure/Idempotency/IdempotencyActionFilter.cs
++++ b/Saham/Infrastructure/Idempotency/IdempotencyActionFilter.cs
+@@ -1,8 +1,11 @@
+ using System;
++using System.Buffers.Binary;
++using System.Linq;
+ using System.Security.Cryptography;
+ using System.Text;
+ using System.Text.Json;
+ using System.Threading.Tasks;
++using Microsoft.AspNetCore.Http;
+ using Microsoft.AspNetCore.Mvc;
+ using Microsoft.AspNetCore.Mvc.Controllers;
+ using Microsoft.AspNetCore.Mvc.Filters;
+@@ -13,26 +16,35 @@ using Volo.Abp.DependencyInjection;
+ using Volo.Abp.Domain.Repositories;
+ using Volo.Abp.Guids;
+ using Volo.Abp.Json;
++using Volo.Abp.MultiTenancy;
+ using Volo.Abp.Timing;
+ using Volo.Abp.Uow;
+ using Volo.Abp.Users;
+ 
+ namespace Saham.Infrastructure.Idempotency;
+ 
+-/* Implements SRS EX-11 for app service methods marked with [Idempotent]:
+- * - same key + same body  -> the stored first response is returned, nothing runs again;
+- * - same key + other body -> 409 IdempotencyConflict;
+- * - first request still running -> 409 RequestInProgress.
+- * Registered after ABP's unit-of-work filter, so the "completed" record is
+- * committed in the same transaction as the business change. */
++/* SRS EX-11 for app service methods marked [Idempotent] — Phase 5, all inside the request's own
++ * ABP unit of work (READ COMMITTED), so the operation and its saved result commit or roll back together:
++ *   1. a transaction advisory lock on (tenant, user, scope, key); taken → 409 RequestInProgress (no wait);
++ *   2. a saved result: same request fingerprint → the same status and body, the operation does not run;
++ *      another fingerprint → 409 IdempotencyConflict;
++ *   3. otherwise the operation runs and its 2xx result is saved in the same transaction, before commit.
++ * A failure anywhere rolls everything back, so a retry runs again; a commit whose response was lost
++ * replays on retry. Nothing is written in a separate transaction, so no "in progress" row can be left
++ * behind by a crash. Authorization runs before this filter on every attempt, replays included.
++ * Scope = HTTP method + request path, so the same key on two orders' cancellations are two operations.
++ * Registered after ABP's unit-of-work filter (SahamModule.ConfigureIdempotency). */
+ public class IdempotencyActionFilter : IAsyncActionFilter, ITransientDependency
+ {
+     public const string HeaderName = "Idempotency-Key";
++    public const string ReplayedHeaderName = "Idempotent-Replayed";
+     private const int MaxKeyLength = 128;
++    private const int MaxScopeLength = 256;
+ 
+     private readonly IRepository<IdempotencyRecord, Guid> _repository;
+     private readonly IUnitOfWorkManager _unitOfWorkManager;
+     private readonly ICurrentUser _currentUser;
++    private readonly ICurrentTenant _currentTenant;
+     private readonly IClock _clock;
+     private readonly IGuidGenerator _guidGenerator;
+     private readonly IJsonSerializer _jsonSerializer;
+@@ -41,6 +53,7 @@ public class IdempotencyActionFilter : IAsyncActionFilter, ITransientDependency
+         IRepository<IdempotencyRecord, Guid> repository,
+         IUnitOfWorkManager unitOfWorkManager,
+         ICurrentUser currentUser,
++        ICurrentTenant currentTenant,
+         IClock clock,
+         IGuidGenerator guidGenerator,
+         IJsonSerializer jsonSerializer)
+@@ -48,6 +61,7 @@ public class IdempotencyActionFilter : IAsyncActionFilter, ITransientDependency
+         _repository = repository;
+         _unitOfWorkManager = unitOfWorkManager;
+         _currentUser = currentUser;
++        _currentTenant = currentTenant;
+         _clock = clock;
+         _guidGenerator = guidGenerator;
+         _jsonSerializer = jsonSerializer;
+@@ -62,62 +76,108 @@ public class IdempotencyActionFilter : IAsyncActionFilter, ITransientDependency
+             return;
+         }
+ 
+-        var key = context.HttpContext.Request.Headers[HeaderName].ToString();
+-        if (key.IsNullOrWhiteSpace() || key.Length > MaxKeyLength)
++        var http = context.HttpContext;
++        var key = http.Request.Headers[HeaderName].ToString();
++        if (!IsValidKey(key))
+         {
+             throw new BusinessException(SahamErrorCodes.IdempotencyKeyRequired);
+         }
+ 
++        if (_unitOfWorkManager.Current is not { Options.IsTransactional: true })
++        {
++            throw new AbpException("[Idempotent] needs the request's transactional unit of work.");
++        }
++
++        // Identity from the server only (token and tenant resolution), never from the body.
+         var userId = _currentUser.Id ?? Guid.Empty;
+-        var scope = $"{descriptor.ControllerName}.{descriptor.ActionName}";
+-        var requestHash = ComputeHash(context);
++        var scope = ScopeOf(_currentTenant.Id, http.Request.Method, http.Request.Path.Value ?? string.Empty);
++        var requestHash = Convert.ToHexString(RequestFingerprint.Compute(JsonSerializer.SerializeToUtf8Bytes(context.ActionArguments)));
+ 
+-        var existing = await FindAsync(userId, scope, key);
+-        if (existing != null)
++        var db = await _repository.GetDbContextAsync();
++        if (db.Database.CurrentTransaction == null)
+         {
+-            context.Result = Replay(existing, requestHash);
+-            return;
++            throw new AbpException("[Idempotent] needs an open database transaction.");
+         }
+ 
+-        var recordId = await TryInsertAsync(userId, scope, key, requestHash);
+-        if (recordId == null)
++        var locked = await db.Database
++            .SqlQueryRaw<bool>("SELECT pg_try_advisory_xact_lock({0}) AS \"Value\"", LockIdOf(_currentTenant.Id, userId, scope, key))
++            .SingleAsync();
++        if (!locked)
+         {
+-            // Another request with the same key won the insert race.
++            http.Response.Headers.RetryAfter = "1";
+             throw new BusinessException(SahamErrorCodes.RequestInProgress);
+         }
+ 
+-        var executed = await next();
++        // After the lock, READ COMMITTED sees what an earlier holder committed.
++        var existing = await _repository.FindAsync(x => x.UserId == userId && x.Scope == scope && x.Key == key);
++        if (existing is { Status: IdempotencyStatus.InProgress })
++        {
++            // Left by the pre-Phase-5 filter (a separate "in progress" commit). This version never writes one,
++            // and we hold the key's lock, so it belongs to a request that died: drop it and run normally.
++            await _repository.DeleteAsync(existing, autoSave: true);
++            existing = null;
++        }
+ 
+-        if (executed.Exception != null && !executed.ExceptionHandled)
++        if (existing != null)
+         {
+-            // The business transaction rolled back: free the key so the client can retry.
+-            await DeleteAsync(recordId.Value);
++            context.Result = Replay(existing, requestHash, http);
+             return;
+         }
+ 
++        var executed = await next();
++        if (executed.Exception != null && !executed.ExceptionHandled)
++        {
++            return; // the unit of work rolls back; nothing was saved, a retry runs again
++        }
++
+         var (statusCode, body) = ReadResult(executed.Result);
+-        var record = await _repository.GetAsync(recordId.Value);
+-        record.Complete(statusCode, body);
+-        await _repository.UpdateAsync(record);
++        if (statusCode is < 200 or >= 300)
++        {
++            return;
++        }
++
++        // Same transaction, flushed now: a failure here fails the request and rolls the operation back.
++        await _repository.InsertAsync(
++            new IdempotencyRecord(_guidGenerator.Create(), userId, scope, key, requestHash, statusCode, body, _clock.Now),
++            autoSave: true);
++        http.Response.Headers.CacheControl = "no-store";
+     }
+ 
+-    private IActionResult Replay(IdempotencyRecord record, string requestHash)
++    public static bool IsValidKey(string? key) =>
++        !string.IsNullOrEmpty(key) && key.Length <= MaxKeyLength && key.All(c => c is >= '!' and <= '~');
++
++    /* "POST:/api/app/customer-order/{id}/cancel" — the method and the real resource id; tenant first when there is one. */
++    public static string ScopeOf(Guid? tenantId, string method, string path)
+     {
+-        if (record.RequestHash != requestHash)
+-        {
+-            throw new BusinessException(SahamErrorCodes.IdempotencyConflict);
+-        }
++        var scope = $"{(tenantId.HasValue ? tenantId.Value.ToString("N") + "|" : string.Empty)}{method.ToUpperInvariant()}:{path.ToLowerInvariant()}";
++        return scope.Length <= MaxScopeLength ? scope : throw new BusinessException(SahamErrorCodes.IdempotencyKeyRequired);
++    }
++
++    /* One bigint per (tenant, user, scope, key); a length-safe encoding avoids delimiter ambiguity. The
++     * single-bigint advisory key space does not overlap the (int, int) one of CustomerBalanceLock.
++     * A collision only makes an unrelated request wait for a retry; it never replays another's result. */
++    public static long LockIdOf(Guid? tenantId, Guid userId, string scope, string key)
++    {
++        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
++            new[] { tenantId?.ToString("D") ?? "host", userId.ToString("D"), scope, key })));
++        return BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(0, 8));
++    }
+ 
+-        if (record.Status == IdempotencyStatus.InProgress)
++    private static IActionResult Replay(IdempotencyRecord record, string requestHash, HttpContext http)
++    {
++        if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(record.RequestHash), Encoding.ASCII.GetBytes(requestHash)))
+         {
+-            throw new BusinessException(SahamErrorCodes.RequestInProgress);
++            throw new BusinessException(SahamErrorCodes.IdempotencyConflict);
+         }
+ 
++        http.Response.Headers.CacheControl = "no-store";
++        http.Response.Headers[ReplayedHeaderName] = "true";
+         if (record.ResponseBody == null)
+         {
+             return new StatusCodeResult(record.ResponseStatusCode ?? StatusCodes.Status204NoContent);
+         }
+ 
++        // The stored JSON as it is (jsonb: same values, key order may differ) — never serialized again.
+         return new ContentResult
+         {
+             Content = record.ResponseBody,
+@@ -137,41 +197,4 @@ public class IdempotencyActionFilter : IAsyncActionFilter, ITransientDependency
+             _ => (StatusCodes.Status204NoContent, null)
+         };
+     }
+-
+-    private static string ComputeHash(ActionExecutingContext context)
+-    {
+-        var json = JsonSerializer.Serialize(context.ActionArguments);
+-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+-    }
+-
+-    private async Task<IdempotencyRecord?> FindAsync(Guid userId, string scope, string key)
+-    {
+-        using var uow = _unitOfWorkManager.Begin(requiresNew: true, isTransactional: false);
+-        var record = await _repository.FindAsync(x => x.UserId == userId && x.Scope == scope && x.Key == key);
+-        await uow.CompleteAsync();
+-        return record;
+-    }
+-
+-    private async Task<Guid?> TryInsertAsync(Guid userId, string scope, string key, string requestHash)
+-    {
+-        var record = new IdempotencyRecord(_guidGenerator.Create(), userId, scope, key, requestHash, _clock.Now);
+-        try
+-        {
+-            using var uow = _unitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+-            await _repository.InsertAsync(record);
+-            await uow.CompleteAsync();
+-            return record.Id;
+-        }
+-        catch (DbUpdateException)
+-        {
+-            return null;
+-        }
+-    }
+-
+-    private async Task DeleteAsync(Guid recordId)
+-    {
+-        using var uow = _unitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+-        await _repository.DeleteAsync(recordId);
+-        await uow.CompleteAsync();
+-    }
+ }
+diff --git a/Saham/Infrastructure/Idempotency/IdempotencyKeyOperationFilter.cs b/Saham/Infrastructure/Idempotency/IdempotencyKeyOperationFilter.cs
+new file mode 100644
+index 0000000..4922670
+--- /dev/null
++++ b/Saham/Infrastructure/Idempotency/IdempotencyKeyOperationFilter.cs
+@@ -0,0 +1,35 @@
++using System.Collections.Generic;
++using Microsoft.OpenApi.Models;
++using Swashbuckle.AspNetCore.SwaggerGen;
++
++namespace Saham.Infrastructure.Idempotency;
++
++/* OpenAPI: every [Idempotent] operation documents the required Idempotency-Key header and its 409s. */
++public class IdempotencyKeyOperationFilter : IOperationFilter
++{
++    public void Apply(OpenApiOperation operation, OperationFilterContext context)
++    {
++        if (!context.MethodInfo.IsDefined(typeof(IdempotentAttribute), inherit: true))
++        {
++            return;
++        }
++
++        operation.Parameters ??= new List<OpenApiParameter>();
++        operation.Parameters.Add(new OpenApiParameter
++        {
++            Name = IdempotencyActionFilter.HeaderName,
++            In = ParameterLocation.Header,
++            Required = true,
++            Schema = new OpenApiSchema { Type = "string", MaxLength = 128 },
++            Description = "One value per user action (e.g. a UUID), 1–128 printable ASCII characters. Retry with the SAME key " +
++                          "and the SAME body: a completed request returns its saved response (header Idempotent-Replayed: true) " +
++                          "without running again. Kept 7 days."
++        });
++        operation.Responses.TryAdd("400", new OpenApiResponse { Description = "Saham:IdempotencyKeyRequired — header missing or invalid." });
++        operation.Responses.TryAdd("409", new OpenApiResponse
++        {
++            Description = "Saham:IdempotencyConflict — same key, different body.  " +
++                          "Saham:RequestInProgress — the same request is still running (Retry-After: 1; retry with the same key)."
++        });
++    }
++}
+diff --git a/Saham/Infrastructure/Idempotency/IdempotencyRecord.cs b/Saham/Infrastructure/Idempotency/IdempotencyRecord.cs
+index 73134a9..c8ca571 100644
+--- a/Saham/Infrastructure/Idempotency/IdempotencyRecord.cs
++++ b/Saham/Infrastructure/Idempotency/IdempotencyRecord.cs
+@@ -3,8 +3,9 @@ using Volo.Abp.Domain.Entities;
+ 
+ namespace Saham.Infrastructure.Idempotency;
+ 
+-/* Stores the first response of a request sent with an Idempotency-Key header
+- * (SRS EX-11, table idempotency_keys). Unique on (UserId, Scope, Key). */
++/* Stores the first successful response of a request sent with an Idempotency-Key header
++ * (SRS EX-11, table idempotency_keys). Unique on (UserId, Scope, Key). Since Phase 5 a row is written
++ * only as Completed, in the same transaction as the operation; "in progress" is the advisory lock. */
+ public class IdempotencyRecord : Entity<Guid>
+ {
+     public Guid UserId { get; private set; }
+@@ -27,27 +28,23 @@ public class IdempotencyRecord : Entity<Guid>
+     {
+     }
+ 
+-    public IdempotencyRecord(Guid id, Guid userId, string scope, string key, string requestHash, DateTime now)
++    public IdempotencyRecord(Guid id, Guid userId, string scope, string key, string requestHash,
++        int statusCode, string? responseBody, DateTime now)
+         : base(id)
+     {
+         UserId = userId;
+         Scope = scope;
+         Key = key;
+         RequestHash = requestHash;
+-        Status = IdempotencyStatus.InProgress;
+-        CreationTime = now;
+-    }
+-
+-    public void Complete(int statusCode, string? responseBody)
+-    {
+         Status = IdempotencyStatus.Completed;
+         ResponseStatusCode = statusCode;
+         ResponseBody = responseBody;
++        CreationTime = now;
+     }
+ }
+ 
+ public enum IdempotencyStatus
+ {
+-    InProgress = 0,
++    InProgress = 0, // only rows left by the pre-Phase-5 filter; removed when their key is used again
+     Completed = 1
+ }
+diff --git a/Saham/Infrastructure/Idempotency/RequestFingerprint.cs b/Saham/Infrastructure/Idempotency/RequestFingerprint.cs
+new file mode 100644
+index 0000000..1789c33
+--- /dev/null
++++ b/Saham/Infrastructure/Idempotency/RequestFingerprint.cs
+@@ -0,0 +1,61 @@
++using System;
++using System.Buffers;
++using System.Linq;
++using System.Security.Cryptography;
++using System.Text.Json;
++
++namespace Saham.Infrastructure.Idempotency;
++
++/// <summary>Deterministic JSON fingerprint. No database or mutable global state.</summary>
++public static class RequestFingerprint
++{
++    public static byte[] Compute(ReadOnlyMemory<byte> utf8Json)
++    {
++        if (utf8Json.Length is 0 or > 1_048_576)
++            throw new ArgumentException("JSON body must contain 1..1048576 bytes.", nameof(utf8Json));
++
++        using var document = JsonDocument.Parse(utf8Json, new JsonDocumentOptions { MaxDepth = 64 });
++        var buffer = new ArrayBufferWriter<byte>();
++        using (var writer = new Utf8JsonWriter(buffer))
++            Write(document.RootElement, writer);
++        return SHA256.HashData(buffer.WrittenSpan);
++    }
++
++    private static void Write(JsonElement element, Utf8JsonWriter writer)
++    {
++        switch (element.ValueKind)
++        {
++            case JsonValueKind.Object:
++                writer.WriteStartObject();
++                // Object field order is irrelevant; array order remains significant.
++                var properties = element.EnumerateObject()
++                    .OrderBy(p => p.Name, StringComparer.Ordinal).ToArray();
++                string? previous = null;
++                foreach (var property in properties)
++                {
++                    // Duplicate fields are ambiguous across serializers: reject them.
++                    if (previous == property.Name)
++                        throw new JsonException("Duplicate JSON property.");
++                    previous = property.Name;
++                    writer.WritePropertyName(property.Name);
++                    Write(property.Value, writer);
++                }
++                writer.WriteEndObject();
++                break;
++            case JsonValueKind.Array:
++                writer.WriteStartArray();
++                foreach (var item in element.EnumerateArray()) Write(item, writer);
++                writer.WriteEndArray();
++                break;
++            case JsonValueKind.String: writer.WriteStringValue(element.GetString()); break;
++            case JsonValueKind.Number:
++                // Preserve precision. 1 and 1.0 deliberately have different fingerprints.
++                writer.WriteRawValue(element.GetRawText());
++                break;
++            case JsonValueKind.True: writer.WriteBooleanValue(true); break;
++            case JsonValueKind.False: writer.WriteBooleanValue(false); break;
++            case JsonValueKind.Null: writer.WriteNullValue(); break;
++            default: throw new JsonException("Unsupported JSON value.");
++        }
++    }
++}
+diff --git a/Saham/SahamModule.cs b/Saham/SahamModule.cs
+index 27d09d1..1229138 100644
+--- a/Saham/SahamModule.cs
++++ b/Saham/SahamModule.cs
+@@ -602,6 +602,7 @@ public class SahamModule : AbpModule
+                 options.SwaggerDoc("v1", new OpenApiInfo { Title = "Saham API", Version = "v1" });
+                 options.DocInclusionPredicate((docName, description) => true);
+                 options.CustomSchemaIds(type => type.FullName);
++                options.OperationFilter<IdempotencyKeyOperationFilter>();
+             });
+     }
+ 
+diff --git a/Saham/Services/Finance/RefundAppService.cs b/Saham/Services/Finance/RefundAppService.cs
+index a8a7381..0cfce92 100644
+--- a/Saham/Services/Finance/RefundAppService.cs
++++ b/Saham/Services/Finance/RefundAppService.cs
+@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
+ using Saham.Entities.Orders;
+ using Saham.Entities.Payments;
+ using Saham.Identity;
++using Saham.Infrastructure.Idempotency;
+ using Saham.Permissions;
+ using Saham.Services.Dtos.Finance;
+ using Volo.Abp.Application.Dtos;
+@@ -67,6 +68,7 @@ public class RefundAppService : SahamAppService, IRefundAppService
+         return (await MapAsync(new List<Refund> { refund })).Single();
+     }
+ 
++    [Idempotent]
+     [Authorize(SahamPermissions.Refunds.ExecuteReal)]
+     public async Task<RefundDto> ResolveManuallyAsync(Guid id, ResolveRefundDto input)
+     {
+diff --git a/Saham/Services/Finance/SettlementAppService.cs b/Saham/Services/Finance/SettlementAppService.cs
+index 98228c2..ab23367 100644
+--- a/Saham/Services/Finance/SettlementAppService.cs
++++ b/Saham/Services/Finance/SettlementAppService.cs
+@@ -126,6 +126,7 @@ public class SettlementAppService : SahamAppService, ISettlementAppService
+         return new ListResultDto<SettlementDto>(await MapAsync(created));
+     }
+ 
++    [Idempotent]
+     [Authorize(SahamPermissions.Settlements.GenerateConfirm)]
+     public async Task<SettlementDto> ConfirmAsync(Guid id)
+     {
+diff --git a/test/Saham.Idempotency.FingerprintChecks/Program.cs b/test/Saham.Idempotency.FingerprintChecks/Program.cs
+new file mode 100644
+index 0000000..3a8d50a
+--- /dev/null
++++ b/test/Saham.Idempotency.FingerprintChecks/Program.cs
+@@ -0,0 +1,23 @@
++using System.Text;
++using System.Text.Json;
++using Saham.Infrastructure.Idempotency;
++
++static byte[] Hash(string json) => RequestFingerprint.Compute(Encoding.UTF8.GetBytes(json));
++static void Check(bool condition, string label)
++{
++    if (!condition) throw new Exception(label);
++    Console.WriteLine($"PASS: {label}");
++}
++Check(Hash("{\"b\":2,\"a\":1}").SequenceEqual(Hash(" { \"a\":1, \"b\":2 } ")),
++    "Field order and insignificant whitespace do not change the fingerprint");
++Check(!Hash("{\"amount\":1}").SequenceEqual(Hash("{\"amount\":2}")), "Changed amount conflicts");
++Check(!Hash("[1,2]").SequenceEqual(Hash("[2,1]")), "Array order is significant");
++Check(Hash("{\"name\":\"\\u0061\"}").SequenceEqual(Hash("{\"name\":\"a\"}")), "String escapes normalize");
++Check(!Hash("1").SequenceEqual(Hash("1.0")), "Numeric representation policy is explicit");
++Check(!Hash("{\"x\":null}").SequenceEqual(Hash("{}")), "Missing and null differ");
++try { Hash("{\"x\":1,\"x\":2}"); throw new Exception("Duplicate fields accepted"); }
++catch (JsonException) { Console.WriteLine("PASS: Duplicate fields rejected"); }
++try { Hash("{"); throw new Exception("Invalid JSON accepted"); }
++catch (JsonException) { Console.WriteLine("PASS: Invalid JSON rejected"); }
++try { Hash(""); throw new Exception("Empty request accepted"); }
++catch (ArgumentException) { Console.WriteLine("PASS: Empty request rejected"); }
+diff --git a/test/Saham.Idempotency.FingerprintChecks/Saham.Idempotency.FingerprintChecks.csproj b/test/Saham.Idempotency.FingerprintChecks/Saham.Idempotency.FingerprintChecks.csproj
+new file mode 100644
+index 0000000..a98ea66
+--- /dev/null
++++ b/test/Saham.Idempotency.FingerprintChecks/Saham.Idempotency.FingerprintChecks.csproj
+@@ -0,0 +1,12 @@
++<Project Sdk="Microsoft.NET.Sdk">
++  <PropertyGroup>
++    <OutputType>Exe</OutputType>
++    <TargetFramework>net9.0</TargetFramework>
++    <Nullable>enable</Nullable>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
++  </PropertyGroup>
++  <ItemGroup>
++    <Compile Include="../../Saham/Infrastructure/Idempotency/RequestFingerprint.cs" Link="%(Filename)%(Extension)" />
++  </ItemGroup>
++</Project>
+diff --git a/test/Saham.Idempotency.Tests/IdempotencyKeyTests.cs b/test/Saham.Idempotency.Tests/IdempotencyKeyTests.cs
+new file mode 100644
+index 0000000..c503ebe
+--- /dev/null
++++ b/test/Saham.Idempotency.Tests/IdempotencyKeyTests.cs
+@@ -0,0 +1,70 @@
++using Saham.Infrastructure.Idempotency;
++using Volo.Abp;
++using Xunit;
++
++namespace Saham.Idempotency.Tests;
++
++/* Key validation, scope and lock identity of the Phase 5 filter. The DB behaviour (lock, replay,
++ * rollback, concurrency) is covered by the integration run against saham_test, not here. */
++public class IdempotencyKeyTests
++{
++    private static readonly Guid User = Guid.Parse("11111111-1111-1111-1111-111111111111");
++
++    [Theory]
++    [InlineData("3f2c8a9e-6b1d-4c2e-9f7a-0d1e2c3b4a5f")]
++    [InlineData("a")]
++    [InlineData("order-2026/10/12#1")]
++    public void Valid_keys(string key) => Assert.True(IdempotencyActionFilter.IsValidKey(key));
++
++    [Theory]
++    [InlineData(null)]
++    [InlineData("")]
++    [InlineData("has space")]
++    [InlineData("tab\tkey")]
++    [InlineData("مفتاح")]
++    public void Invalid_keys(string? key) => Assert.False(IdempotencyActionFilter.IsValidKey(key));
++
++    [Fact]
++    public void Key_length_limit_is_128()
++    {
++        Assert.True(IdempotencyActionFilter.IsValidKey(new string('k', 128)));
++        Assert.False(IdempotencyActionFilter.IsValidKey(new string('k', 129)));
++    }
++
++    [Fact]
++    public void Scope_has_method_and_the_real_resource_id()
++    {
++        var a = IdempotencyActionFilter.ScopeOf(null, "post", "/api/app/customer-order/AAA/cancel");
++        var b = IdempotencyActionFilter.ScopeOf(null, "POST", "/api/app/customer-order/bbb/cancel");
++        Assert.Equal("POST:/api/app/customer-order/aaa/cancel", a);
++        Assert.NotEqual(a, b);
++    }
++
++    [Fact]
++    public void Tenant_is_part_of_the_scope_when_there_is_one()
++    {
++        var tenant = Guid.NewGuid();
++        Assert.StartsWith(tenant.ToString("N") + "|", IdempotencyActionFilter.ScopeOf(tenant, "POST", "/x"));
++        Assert.Equal("POST:/x", IdempotencyActionFilter.ScopeOf(null, "POST", "/x"));
++    }
++
++    [Fact]
++    public void Too_long_scope_is_a_business_error()
++    {
++        var error = Assert.Throws<BusinessException>(() => IdempotencyActionFilter.ScopeOf(null, "POST", "/" + new string('x', 300)));
++        Assert.Equal(SahamErrorCodes.IdempotencyKeyRequired, error.Code);
++    }
++
++    [Fact]
++    public void Lock_id_is_stable_and_separates_users_tenants_scopes_and_keys()
++    {
++        var baseline = IdempotencyActionFilter.LockIdOf(null, User, "POST:/a", "k");
++        Assert.Equal(baseline, IdempotencyActionFilter.LockIdOf(null, User, "POST:/a", "k"));
++        Assert.NotEqual(baseline, IdempotencyActionFilter.LockIdOf(null, Guid.NewGuid(), "POST:/a", "k"));
++        Assert.NotEqual(baseline, IdempotencyActionFilter.LockIdOf(Guid.NewGuid(), User, "POST:/a", "k"));
++        Assert.NotEqual(baseline, IdempotencyActionFilter.LockIdOf(null, User, "POST:/b", "k"));
++        Assert.NotEqual(baseline, IdempotencyActionFilter.LockIdOf(null, User, "POST:/a", "k2"));
++        // No delimiter ambiguity: ("a|b", "c") and ("a", "b|c") differ.
++        Assert.NotEqual(IdempotencyActionFilter.LockIdOf(null, User, "a|b", "c"), IdempotencyActionFilter.LockIdOf(null, User, "a", "b|c"));
++    }
++}
+diff --git a/test/Saham.Idempotency.Tests/Saham.Idempotency.Tests.csproj b/test/Saham.Idempotency.Tests/Saham.Idempotency.Tests.csproj
+new file mode 100644
+index 0000000..4bffe1f
+--- /dev/null
++++ b/test/Saham.Idempotency.Tests/Saham.Idempotency.Tests.csproj
+@@ -0,0 +1,18 @@
++<Project Sdk="Microsoft.NET.Sdk">
++  <PropertyGroup>
++    <TargetFramework>net9.0</TargetFramework>
++    <Nullable>enable</Nullable>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <IsPackable>false</IsPackable>
++    <IsTestProject>true</IsTestProject>
++  </PropertyGroup>
++  <ItemGroup>
++    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
++    <PackageReference Include="xunit" Version="2.9.2" />
++    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
++      <PrivateAssets>all</PrivateAssets>
++      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
++    </PackageReference>
++    <ProjectReference Include="../../Saham/Saham.csproj" />
++  </ItemGroup>
++</Project>

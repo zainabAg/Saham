@@ -21,6 +21,7 @@ public class HousekeepingWorker : AsyncPeriodicBackgroundWorkerBase
         : base(timer, serviceScopeFactory)
     {
         Timer.Period = (int)TimeSpan.FromHours(1).TotalMilliseconds;
+        Timer.RunOnStart = true; // also right after a (re)start, not only an hour later
     }
 
     protected override async Task DoWorkAsync(PeriodicBackgroundWorkerContext workerContext)
@@ -30,6 +31,8 @@ public class HousekeepingWorker : AsyncPeriodicBackgroundWorkerBase
         var clock = services.GetRequiredService<IClock>();
         var settings = services.GetRequiredService<ISettingProvider>();
 
+        // EX-11: kept 7 days. After deletion a reused key runs again: the lasting guards are the business ones
+        // (one order per quote, state transitions, unique ledger keys), not this table.
         var retentionDays = await settings.GetAsync<int>(SahamSettings.System.IdempotencyRetentionDays);
         var idempotencyCutoff = clock.Now.AddDays(-retentionDays);
         await services.GetRequiredService<IRepository<IdempotencyRecord, Guid>>()

@@ -126,6 +126,7 @@ public class SettlementAppService : SahamAppService, ISettlementAppService
         return new ListResultDto<SettlementDto>(await MapAsync(created));
     }
 
+    [Idempotent]
     [Authorize(SahamPermissions.Settlements.GenerateConfirm)]
     public async Task<SettlementDto> ConfirmAsync(Guid id)
     {
