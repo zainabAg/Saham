@@ -22,7 +22,7 @@ public static class SahamSettings
         public const string MaxPrepMinutes = Prefix + ".Orders.MaxPrepMinutes";
         public const string LateThresholdMinutes = Prefix + ".Orders.LateThresholdMinutes";
         public const string QuoteLifetimeMinutes = Prefix + ".Orders.QuoteLifetimeMinutes";
-        // Longest wait for the customer balance lock (order creation, ledger postings) before 409 "busy".
+        // Longest wait for the customer balance lock and the coupon row lock before 409 "busy".
         public const string BalanceLockTimeoutSeconds = Prefix + ".Orders.BalanceLockTimeoutSeconds";
         public const string WalletPaymentTimeoutMinutes = Prefix + ".Orders.WalletPaymentTimeoutMinutes";
         public const string AddressMinDescriptionLength = Prefix + ".Orders.AddressMinDescriptionLength";

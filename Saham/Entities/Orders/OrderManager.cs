@@ -66,6 +66,13 @@ public class OrderManager : DomainService
         var now = Clock.Now;
 
         var quote = await _quoteRepository.GetAsync(quoteId);
+        // Then the coupon row (lock order: customer → coupon), before re-pricing: the fresh quote below
+        // reads terms and uses that cannot change until commit (BR-010).
+        if (quote.Snapshot.Coupon != null)
+        {
+            await _couponManager.LockForOrderAsync(quote.Snapshot.Coupon.CouponId);
+        }
+
         if (quote.CustomerId != customerId)
         {
             throw new EntityNotFoundException(typeof(Quote), quoteId);
@@ -154,9 +161,11 @@ public class OrderManager : DomainService
         }
 
         order.Place(now, releaseAt, GuidGenerator.Create, customerId);
-        if (quote.Snapshot.Coupon != null)
+        if (quote.Snapshot.Coupon is { } couponSnapshot)
         {
-            await _couponManager.ReserveAsync(quote.Snapshot.Coupon.CouponId, order.Id, customerId, quote.Snapshot.Coupon.Amount);
+            // Server values: K and S before the discount, from the quote that matched today's prices.
+            await _couponManager.ReserveAsync(couponSnapshot, order.Id, customerId, quote.RestaurantId,
+                quote.Snapshot.Lines.Sum(l => l.LineTotal));
         }
 
         quote.MarkConsumed(order.Id);

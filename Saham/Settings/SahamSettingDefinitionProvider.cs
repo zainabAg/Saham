@@ -23,7 +23,7 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
         Add(context, SahamSettings.Orders.MaxPrepMinutes, "120");
         Add(context, SahamSettings.Orders.LateThresholdMinutes, "10");         // ASM-21
         Add(context, SahamSettings.Orders.QuoteLifetimeMinutes, "10");
-        Add(context, SahamSettings.Orders.BalanceLockTimeoutSeconds, "30");
+        Add(context, SahamSettings.Orders.BalanceLockTimeoutSeconds, "20"); // < 30 s command timeout
         Add(context, SahamSettings.Orders.WalletPaymentTimeoutMinutes, "15");  // ASM-17
         Add(context, SahamSettings.Orders.AddressMinDescriptionLength, "5");   // ASM-22
         Add(context, SahamSettings.Orders.ScheduleMinLeadMinutes, "60");       // BR-020 / REC-13

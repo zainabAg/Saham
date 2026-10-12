@@ -65,6 +65,11 @@ public static class SahamErrorCodes
     // BR-064/BR-071: the balance is promised to open orders beyond what the ledger holds
     public const string CustomerBalanceReservationConflict = Prefix + "CustomerBalanceReservationConflict";
     public const string CustomerBalanceBusy = Prefix + "CustomerBalanceBusy";
+    // Coupon uses (CouponReservationCoordinator)
+    public const string CouponReservationConflict = Prefix + "CouponReservationConflict";
+    public const string CouponReservationNotReserved = Prefix + "CouponReservationNotReserved";
+    public const string CouponDiscountCannotIncrease = Prefix + "CouponDiscountCannotIncrease";
+    public const string CouponBusy = Prefix + "CouponBusy";
     public const string CustomerCannotCancel = Prefix + "CustomerCannotCancel";
     public const string CancelNoteRequired = Prefix + "CancelNoteRequired";
     public const string OrderOnHold = Prefix + "OrderOnHold";

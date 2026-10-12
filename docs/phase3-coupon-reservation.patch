@@ -1,0 +1,582 @@
+diff --git a/Saham/Entities/Coupons/CouponManager.cs b/Saham/Entities/Coupons/CouponManager.cs
+index 8150527..36447be 100644
+--- a/Saham/Entities/Coupons/CouponManager.cs
++++ b/Saham/Entities/Coupons/CouponManager.cs
+@@ -1,7 +1,7 @@
+ using System;
+ using System.Linq;
+ using System.Threading.Tasks;
+-using Microsoft.EntityFrameworkCore;
++using Saham.Entities.Pricing;
+ using Volo.Abp;
+ using Volo.Abp.Domain.Repositories;
+ using Volo.Abp.Domain.Services;
+@@ -11,20 +11,25 @@ namespace Saham.Entities.Coupons;
+ /* Coupons from creation to use (BR-010..BR-012, BR-072):
+  *   - the owner creates active coupons; a restaurant manager requests one for their restaurant,
+  *     funded by the restaurant, which stays PENDING_APPROVAL until the owner decides;
+- *   - quotes check a code without reserving it; the order reserves it atomically
+- *     (UPDATE … SET used_count = used_count + 1 WHERE used_count < limit), so two orders can never
+- *     both take the last use;
++ *   - quotes check a code without reserving it; the order reserves it through
++ *     CouponReservationCoordinator (coupon row locked, total and per-customer limits counted after
++ *     the lock), so two orders can never both take the last use;
+  *   - the reservation is consumed on delivery / "not received" / a late customer cancellation,
+  *     and released (the use given back) on any other cancellation or a failed payment. */
+ public class CouponManager : DomainService
+ {
+     private readonly IRepository<Coupon, Guid> _couponRepository;
+     private readonly IRepository<CouponRedemption, Guid> _redemptionRepository;
++    private readonly CouponReservationCoordinator _reservations;
+ 
+-    public CouponManager(IRepository<Coupon, Guid> couponRepository, IRepository<CouponRedemption, Guid> redemptionRepository)
++    public CouponManager(
++        IRepository<Coupon, Guid> couponRepository,
++        IRepository<CouponRedemption, Guid> redemptionRepository,
++        CouponReservationCoordinator reservations)
+     {
+         _couponRepository = couponRepository;
+         _redemptionRepository = redemptionRepository;
++        _reservations = reservations;
+     }
+ 
+     public async Task<Coupon> CreateByOwnerAsync(Guid ownerId, string code, CouponDiscountType type, long value, long? maxDiscount,
+@@ -85,55 +90,19 @@ public class CouponManager : DomainService
+         return coupon;
+     }
+ 
+-    /* Inside the order transaction. The conditional UPDATE is the lock (BR-010 race on the last use). */
+-    public async Task ReserveAsync(Guid couponId, Guid orderId, Guid customerId, long amount)
+-    {
+-        var taken = await (await _couponRepository.GetDbSetAsync())
+-            .Where(c => c.Id == couponId && c.Status == CouponStatus.Active &&
+-                        (c.UsageLimitTotal == null || c.UsedCount < c.UsageLimitTotal))
+-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.UsedCount, c => c.UsedCount + 1));
+-        if (taken == 0)
+-        {
+-            throw new BusinessException(SahamErrorCodes.CouponUsageLimitReached);
+-        }
++    /* The lifecycle of a use lives in CouponReservationCoordinator only, inside the caller's transaction. */
++    public Task LockForOrderAsync(Guid couponId) => _reservations.LockAsync(couponId);
+ 
+-        await _redemptionRepository.InsertAsync(new CouponRedemption(GuidGenerator.Create(), couponId, orderId, customerId, amount));
+-    }
++    public Task ReserveAsync(QuoteCouponSnapshot snapshot, Guid orderId, Guid customerId, Guid restaurantId, long itemsSubtotal) =>
++        _reservations.ReserveAsync(snapshot, orderId, customerId, restaurantId, itemsSubtotal);
+ 
+-    public async Task ConsumeAsync(Guid orderId)
+-    {
+-        var redemption = await _redemptionRepository.FindAsync(r => r.OrderId == orderId);
+-        if (redemption != null && redemption.Consume())
+-        {
+-            await _redemptionRepository.UpdateAsync(redemption);
+-        }
+-    }
++    public Task ConsumeAsync(Guid orderId) => _reservations.ConsumeAsync(orderId);
+ 
+     /* The use goes back to the coupon (cancellation not caused by the customer, payment failed). */
+-    public async Task ReleaseAsync(Guid orderId)
+-    {
+-        var redemption = await _redemptionRepository.FindAsync(r => r.OrderId == orderId);
+-        if (redemption == null || !redemption.Release())
+-        {
+-            return;
+-        }
+-
+-        await _redemptionRepository.UpdateAsync(redemption);
+-        await (await _couponRepository.GetDbSetAsync())
+-            .Where(c => c.Id == redemption.CouponId && c.UsedCount > 0)
+-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.UsedCount, c => c.UsedCount - 1));
+-    }
++    public Task ReleaseAsync(Guid orderId) => _reservations.ReleaseAsync(orderId);
+ 
+     /* BR-048: the discount after an item was removed (never more than before). */
+-    public async Task UpdateAmountAsync(Guid orderId, long amount)
+-    {
+-        var redemption = await _redemptionRepository.FindAsync(r => r.OrderId == orderId);
+-        if (redemption != null && redemption.Amount != amount)
+-        {
+-            redemption.UpdateAmount(amount);
+-            await _redemptionRepository.UpdateAsync(redemption);
+-        }
+-    }
++    public Task UpdateAmountAsync(Guid orderId, long amount) => _reservations.UpdateAmountAsync(orderId, amount);
+ 
+     private Task<int> CustomerUsesAsync(Guid couponId, Guid customerId) =>
+         _redemptionRepository.CountAsync(r => r.CouponId == couponId && r.CustomerId == customerId &&
+diff --git a/Saham/Entities/Coupons/CouponRedemption.cs b/Saham/Entities/Coupons/CouponRedemption.cs
+index 6962f82..47b3548 100644
+--- a/Saham/Entities/Coupons/CouponRedemption.cs
++++ b/Saham/Entities/Coupons/CouponRedemption.cs
+@@ -3,7 +3,8 @@ using Volo.Abp.Domain.Entities.Auditing;
+ 
+ namespace Saham.Entities.Coupons;
+ 
+-/* One coupon use by one order (SRS table coupon_redemptions; UK order_id). */
++/* One coupon use by one order (SRS table coupon_redemptions; UK order_id).
++ * Status and Amount change only through CouponReservationCoordinator (row lock + conditional UPDATE). */
+ public class CouponRedemption : CreationAuditedAggregateRoot<Guid>
+ {
+     public Guid CouponId { get; private set; }
+@@ -31,27 +32,4 @@ public class CouponRedemption : CreationAuditedAggregateRoot<Guid>
+         Status = CouponRedemptionStatus.Reserved;
+     }
+ 
+-    internal void UpdateAmount(long amount) => Amount = amount;
+-
+-    internal bool Consume()
+-    {
+-        if (Status != CouponRedemptionStatus.Reserved)
+-        {
+-            return false;
+-        }
+-
+-        Status = CouponRedemptionStatus.Consumed;
+-        return true;
+-    }
+-
+-    internal bool Release()
+-    {
+-        if (Status != CouponRedemptionStatus.Reserved)
+-        {
+-            return false;
+-        }
+-
+-        Status = CouponRedemptionStatus.Released;
+-        return true;
+-    }
+ }
+diff --git a/Saham/Entities/Coupons/CouponReservationCoordinator.cs b/Saham/Entities/Coupons/CouponReservationCoordinator.cs
+new file mode 100644
+index 0000000..2bf7e5a
+--- /dev/null
++++ b/Saham/Entities/Coupons/CouponReservationCoordinator.cs
+@@ -0,0 +1,265 @@
++using System;
++using System.Data;
++using System.Linq;
++using System.Threading.Tasks;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Storage;
++using Saham.Data;
++using Saham.Entities.Customers;
++using Saham.Entities.Pricing;
++using Saham.Settings;
++using Volo.Abp;
++using Volo.Abp.Domain.Services;
++using Volo.Abp.EntityFrameworkCore;
++using Volo.Abp.Settings;
++
++namespace Saham.Entities.Coupons;
++
++/* Phase 3 (F05) — the only writer of coupon uses (BR-010, BR-011):
++ *   - the coupon row is locked (SELECT … FOR UPDATE) until the caller's transaction ends, then the
++ *     coupon, its terms, the time and this customer's uses are read again, so neither the total limit
++ *     nor the per-customer limit can be passed by two orders at once;
++ *   - Reserved and Consumed uses count, Released ones do not;
++ *   - an exact replay of a reservation takes nothing more; release gives the use back once; a consumed
++ *     use never comes back.
++ * Joins the caller's ABP unit of work (never requiresNew): an order that fails rolls back its use.
++ * Lock order across the project: customer balance lock → coupon row → redemption. */
++public class CouponReservationCoordinator : DomainService
++{
++    private readonly IDbContextProvider<SahamDbContext> _contextProvider;
++    private readonly ISettingProvider _settingProvider;
++
++    public CouponReservationCoordinator(IDbContextProvider<SahamDbContext> contextProvider, ISettingProvider settingProvider)
++    {
++        _contextProvider = contextProvider;
++        _settingProvider = settingProvider;
++    }
++
++    /* Taken by OrderManager BEFORE it re-prices, so the fresh quote is computed from coupon terms that
++     * cannot change until commit, and a change surfaces as the normal PRICE_CHANGED with a real new quote. */
++    public async Task LockAsync(Guid couponId)
++    {
++        RequireId(couponId, nameof(couponId));
++        await LockCouponAsync(await GetTransactionalContextAsync(), couponId);
++    }
++
++    /* At order confirmation, with server-owned values from the quote. */
++    public async Task ReserveAsync(QuoteCouponSnapshot expected, Guid orderId, Guid customerId, Guid restaurantId, long itemsSubtotal)
++    {
++        ArgumentNullException.ThrowIfNull(expected);
++        RequireId(expected.CouponId, nameof(expected.CouponId));
++        RequireId(orderId, nameof(orderId));
++        RequireId(customerId, nameof(customerId));
++        RequireId(restaurantId, nameof(restaurantId));
++        if (itemsSubtotal < 0 || expected.Amount < 0)
++        {
++            throw new ArgumentOutOfRangeException(nameof(itemsSubtotal));
++        }
++
++        var db = await GetTransactionalContextAsync();
++        var coupon = await LockCouponAsync(db, expected.CouponId); // re-entrant if LockAsync ran first
++
++        var existing = await db.CouponRedemptions.AsNoTracking().SingleOrDefaultAsync(r => r.OrderId == orderId);
++        if (existing != null)
++        {
++            if (existing.CouponId == expected.CouponId && existing.CustomerId == customerId &&
++                existing.Amount == expected.Amount && existing.Status != CouponRedemptionStatus.Released)
++            {
++                return; // the same reservation again: no second use
++            }
++
++            throw new BusinessException(SahamErrorCodes.CouponReservationConflict);
++        }
++
++        // The time after the lock: the coupon may have expired while this request waited for it.
++        var now = Clock.Now;
++        if (coupon.IsDeleted || coupon.ApprovedBy == null || !coupon.IsUsableAt(now))
++        {
++            throw new BusinessException(SahamErrorCodes.CouponNotValidNow);
++        }
++
++        if (coupon.RestaurantId.HasValue && coupon.RestaurantId != restaurantId)
++        {
++            throw new BusinessException(SahamErrorCodes.CouponNotForRestaurant);
++        }
++
++        if (itemsSubtotal < coupon.MinSubtotal)
++        {
++            throw new BusinessException(SahamErrorCodes.CouponBelowMinSubtotal).WithData("minSubtotal", coupon.MinSubtotal);
++        }
++
++        // All frozen terms, not only K: free-delivery stacking changes the total even with the same K.
++        // OrderManager re-prices under this lock, so this is a guard; it has no new quote to offer.
++        if (coupon.Code != expected.Code || coupon.DiscountType != expected.DiscountType ||
++            coupon.Value != expected.Value || coupon.MaxDiscount != expected.MaxDiscount ||
++            coupon.FundedBy != expected.FundedBy ||
++            coupon.StackableWithFreeDelivery != expected.StackableWithFreeDelivery ||
++            coupon.DiscountFor(itemsSubtotal) != expected.Amount)
++        {
++            throw new BusinessException(SahamErrorCodes.PriceChanged);
++        }
++
++        // Counted after the lock: the check that was missing (F05).
++        var customerUses = await db.CouponRedemptions.AsNoTracking().CountAsync(r =>
++            r.CouponId == coupon.Id && r.CustomerId == customerId && r.Status != CouponRedemptionStatus.Released);
++        if (coupon.IsUsedUp ||
++            (coupon.UsageLimitPerCustomer.HasValue && customerUses >= coupon.UsageLimitPerCustomer.Value))
++        {
++            throw new BusinessException(SahamErrorCodes.CouponUsageLimitReached);
++        }
++
++        // ExecuteUpdate bypasses the change tracker; a new stamp makes any older tracked Coupon fail
++        // its ConcurrencyStamp check instead of writing back a stale UsedCount.
++        var changed = await db.Coupons
++            .Where(c => c.Id == coupon.Id && c.Status == CouponStatus.Active && !c.IsDeleted &&
++                        (c.UsageLimitTotal == null || c.UsedCount < c.UsageLimitTotal))
++            .ExecuteUpdateAsync(s => s
++                .SetProperty(c => c.UsedCount, c => c.UsedCount + 1)
++                .SetProperty(c => c.ConcurrencyStamp, NewStamp()));
++        if (changed != 1)
++        {
++            throw new BusinessException(SahamErrorCodes.CouponUsageLimitReached);
++        }
++
++        await db.CouponRedemptions.AddAsync(new CouponRedemption(GuidGenerator.Create(), coupon.Id, orderId, customerId, expected.Amount));
++        // A flush, not a commit: the unique OrderId index runs now; any error aborts the whole unit of work.
++        await db.SaveChangesAsync();
++    }
++
++    /* Delivery / "not received" / late customer cancellation: the use stays taken. */
++    public Task ConsumeAsync(Guid orderId) => FinishAsync(orderId, release: false);
++
++    /* Only where the cancellation / payment policy gives the use back (LedgerOrderEventHandler decides). */
++    public Task ReleaseAsync(Guid orderId) => FinishAsync(orderId, release: true);
++
++    /* BR-048: an item removal can lower K, never raise it. */
++    public async Task UpdateAmountAsync(Guid orderId, long amount)
++    {
++        RequireId(orderId, nameof(orderId));
++        if (amount < 0)
++        {
++            throw new ArgumentOutOfRangeException(nameof(amount));
++        }
++
++        var db = await GetTransactionalContextAsync();
++        var couponId = await FindCouponIdAsync(db, orderId);
++        if (!couponId.HasValue)
++        {
++            return;
++        }
++
++        await LockCouponAsync(db, couponId.Value);
++        var redemption = await db.CouponRedemptions.AsNoTracking().SingleAsync(r => r.OrderId == orderId);
++        if (redemption.Amount == amount)
++        {
++            return;
++        }
++
++        if (redemption.Status != CouponRedemptionStatus.Reserved)
++        {
++            throw new BusinessException(SahamErrorCodes.CouponReservationNotReserved);
++        }
++
++        if (amount > redemption.Amount)
++        {
++            throw new BusinessException(SahamErrorCodes.CouponDiscountCannotIncrease);
++        }
++
++        var changed = await db.CouponRedemptions
++            .Where(r => r.Id == redemption.Id && r.Status == CouponRedemptionStatus.Reserved && r.Amount == redemption.Amount)
++            .ExecuteUpdateAsync(s => s.SetProperty(r => r.Amount, amount).SetProperty(r => r.ConcurrencyStamp, NewStamp()));
++        if (changed != 1)
++        {
++            throw new InvalidOperationException("Coupon reservation changed unexpectedly.");
++        }
++    }
++
++    private async Task FinishAsync(Guid orderId, bool release)
++    {
++        RequireId(orderId, nameof(orderId));
++        var db = await GetTransactionalContextAsync();
++        var couponId = await FindCouponIdAsync(db, orderId);
++        if (!couponId.HasValue)
++        {
++            return; // the order used no coupon
++        }
++
++        // Coupon before redemption, like every writer. A disabled or deleted coupon still finishes its uses.
++        await LockCouponAsync(db, couponId.Value);
++        var next = release ? CouponRedemptionStatus.Released : CouponRedemptionStatus.Consumed;
++        var changed = await db.CouponRedemptions
++            .Where(r => r.OrderId == orderId && r.CouponId == couponId.Value && r.Status == CouponRedemptionStatus.Reserved)
++            .ExecuteUpdateAsync(s => s.SetProperty(r => r.Status, next).SetProperty(r => r.ConcurrencyStamp, NewStamp()));
++        if (changed == 0)
++        {
++            return; // a replay, or already final: never give the use back twice
++        }
++
++        if (release)
++        {
++            var restored = await db.Coupons.IgnoreQueryFilters()
++                .Where(c => c.Id == couponId.Value && c.UsedCount > 0)
++                .ExecuteUpdateAsync(s => s
++                    .SetProperty(c => c.UsedCount, c => c.UsedCount - 1)
++                    .SetProperty(c => c.ConcurrencyStamp, NewStamp()));
++            if (restored != 1)
++            {
++                throw new InvalidOperationException("Coupon counter is inconsistent; roll back and reconcile.");
++            }
++        }
++    }
++
++    private static Task<Guid?> FindCouponIdAsync(SahamDbContext db, Guid orderId) =>
++        db.CouponRedemptions.AsNoTracking().Where(r => r.OrderId == orderId).Select(r => (Guid?)r.CouponId).SingleOrDefaultAsync();
++
++    private async Task<SahamDbContext> GetTransactionalContextAsync()
++    {
++        var db = await _contextProvider.GetDbContextAsync();
++        var transaction = db.Database.CurrentTransaction;
++        // ABP opens the transaction without a level: PostgreSQL then runs READ COMMITTED (its default).
++        var level = transaction?.GetDbTransaction().IsolationLevel;
++        if (level is not (IsolationLevel.ReadCommitted or IsolationLevel.Unspecified))
++        {
++            throw new InvalidOperationException("Coupon reservation needs the caller's READ COMMITTED transaction.");
++        }
++
++        if (db.Database.ProviderName != "Npgsql.EntityFrameworkCore.PostgreSQL")
++        {
++            throw new InvalidOperationException("Coupon reservation needs PostgreSQL.");
++        }
++
++        return db;
++    }
++
++    private async Task<Coupon> LockCouponAsync(SahamDbContext db, Guid couponId)
++    {
++        // Bounded wait (the same setting as the customer lock, below the 30 s command timeout): a long
++        // holder becomes a 409 "try again" and the whole request rolls back, never a 500.
++        var timeoutSeconds = await _settingProvider.GetAsync<int>(SahamSettings.Orders.BalanceLockTimeoutSeconds);
++        try
++        {
++            await db.Database.ExecuteSqlRawAsync("SELECT set_config('lock_timeout', {0}, true)", $"{Math.Max(1, timeoutSeconds)}s");
++            // Table name of the current mapping (prefix App, no schema). Filters ignored so a deleted coupon's
++            // uses can still finish; AsNoTracking so an older tracked copy is never returned.
++            var rows = await db.Coupons
++                .FromSqlInterpolated($"SELECT * FROM \"AppCoupons\" WHERE \"Id\" = {couponId} FOR UPDATE")
++                .IgnoreQueryFilters().AsNoTracking().ToListAsync();
++            await db.Database.ExecuteSqlRawAsync("SELECT set_config('lock_timeout', '0', true)");
++            return rows.SingleOrDefault() ?? throw new BusinessException(SahamErrorCodes.CouponNotFound);
++        }
++        catch (Exception ex) when (CustomerBalanceLock.IsLockTimeout(ex))
++        {
++            throw new BusinessException(SahamErrorCodes.CouponBusy);
++        }
++    }
++
++    private string NewStamp() => GuidGenerator.Create().ToString("N");
++
++    private static void RequireId(Guid id, string name)
++    {
++        if (id == Guid.Empty)
++        {
++            throw new ArgumentException("An id is required.", name);
++        }
++    }
++}
+diff --git a/Saham/Entities/Customers/CustomerBalanceLock.cs b/Saham/Entities/Customers/CustomerBalanceLock.cs
+index f9ce031..51152b9 100644
+--- a/Saham/Entities/Customers/CustomerBalanceLock.cs
++++ b/Saham/Entities/Customers/CustomerBalanceLock.cs
+@@ -58,7 +58,8 @@ public class CustomerBalanceLock : ITransientDependency
+         }
+ 
+         // A bounded wait: a stuck holder becomes a 409 "try again", never a hung request. It must be longer
+-        // than one order creation (≈15 s against a remote database), or a normal second order fails as busy.
++        // than one order creation (≈15 s against a remote database), or a normal second order fails as busy,
++        // and shorter than the 30 s command timeout, or the wait ends as a 500 instead.
+         var timeoutSeconds = await _settingProvider.GetAsync<int>(SahamSettings.Orders.BalanceLockTimeoutSeconds);
+         try
+         {
+@@ -67,7 +68,7 @@ public class CustomerBalanceLock : ITransientDependency
+             await database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", LockNamespace, KeyOf(customerId));
+             await database.ExecuteSqlRawAsync("SELECT set_config('lock_timeout', '0', true)");
+         }
+-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.LockNotAvailable)
++        catch (Exception ex) when (IsLockTimeout(ex))
+         {
+             throw new BusinessException(SahamErrorCodes.CustomerBalanceBusy);
+         }
+@@ -86,6 +87,20 @@ public class CustomerBalanceLock : ITransientDependency
+         }
+     }
+ 
++    /* lock_timeout (55P03), also when EF wraps it ("transient failure"). */
++    public static bool IsLockTimeout(Exception? ex)
++    {
++        for (; ex != null; ex = ex.InnerException)
++        {
++            if (ex is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable })
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
+     /* Stable across processes and versions (unlike string.GetHashCode): the 16 bytes folded to 32 bits.
+      * Two customers sharing a key only wait for each other; correctness is unaffected. */
+     public static int KeyOf(Guid customerId)
+diff --git a/Saham/Entities/Orders/OrderManager.cs b/Saham/Entities/Orders/OrderManager.cs
+index 768c259..95c64d7 100644
+--- a/Saham/Entities/Orders/OrderManager.cs
++++ b/Saham/Entities/Orders/OrderManager.cs
+@@ -66,6 +66,13 @@ public class OrderManager : DomainService
+         var now = Clock.Now;
+ 
+         var quote = await _quoteRepository.GetAsync(quoteId);
++        // Then the coupon row (lock order: customer → coupon), before re-pricing: the fresh quote below
++        // reads terms and uses that cannot change until commit (BR-010).
++        if (quote.Snapshot.Coupon != null)
++        {
++            await _couponManager.LockForOrderAsync(quote.Snapshot.Coupon.CouponId);
++        }
++
+         if (quote.CustomerId != customerId)
+         {
+             throw new EntityNotFoundException(typeof(Quote), quoteId);
+@@ -154,9 +161,11 @@ public class OrderManager : DomainService
+         }
+ 
+         order.Place(now, releaseAt, GuidGenerator.Create, customerId);
+-        if (quote.Snapshot.Coupon != null)
++        if (quote.Snapshot.Coupon is { } couponSnapshot)
+         {
+-            await _couponManager.ReserveAsync(quote.Snapshot.Coupon.CouponId, order.Id, customerId, quote.Snapshot.Coupon.Amount);
++            // Server values: K and S before the discount, from the quote that matched today's prices.
++            await _couponManager.ReserveAsync(couponSnapshot, order.Id, customerId, quote.RestaurantId,
++                quote.Snapshot.Lines.Sum(l => l.LineTotal));
+         }
+ 
+         quote.MarkConsumed(order.Id);
+diff --git a/Saham/Localization/Saham/ar.json b/Saham/Localization/Saham/ar.json
+index 813f340..f8d6faa 100644
+--- a/Saham/Localization/Saham/ar.json
++++ b/Saham/Localization/Saham/ar.json
+@@ -162,6 +162,10 @@
+     "Saham:WalletNotAvailable": "الدفع بالمحفظة غير متاح حالياً. ادفع نقداً.",
+     "Saham:CashNotAllowed": "الدفع النقدي موقوف على حسابك بعد عدم استلام طلبين.",
+     "Saham:CustomerBalanceReservationConflict": "رصيدك محجوز لطلبات مفتوحة أخرى ويحتاج مراجعة. حاول بعد اكتمالها أو تواصل مع الدعم.",
++    "Saham:CouponReservationConflict": "هذا الطلب حجز كوبوناً آخر أو بمبلغ مختلف.",
++    "Saham:CouponReservationNotReserved": "استخدام الكوبون لهذا الطلب انتهى ولا يمكن تعديله.",
++    "Saham:CouponDiscountCannotIncrease": "لا يمكن زيادة خصم الكوبون بعد تأكيد الطلب.",
++    "Saham:CouponBusy": "الكوبون مشغول بطلب آخر الآن. حاول مرة أخرى بعد لحظات.",
+     "Saham:CustomerBalanceBusy": "عملية أخرى على رصيدك قيد التنفيذ. حاول مرة أخرى بعد لحظات.",
+     "Saham:CashTenderedTooLow": "الورقة النقدية يجب أن تغطي المبلغ المطلوب ({amountDue} دينار).",
+     "Saham:CustomerCannotCancel": "المطعم قبل الطلب. تواصل مع الدعم للإلغاء.",
+diff --git a/Saham/Localization/Saham/en.json b/Saham/Localization/Saham/en.json
+index 4b1ba8f..cdc79af 100644
+--- a/Saham/Localization/Saham/en.json
++++ b/Saham/Localization/Saham/en.json
+@@ -172,6 +172,10 @@
+     "Saham:WalletNotAvailable": "Wallet payment is not available yet. Please pay cash.",
+     "Saham:CashNotAllowed": "Cash payment is disabled on your account after two undelivered orders.",
+     "Saham:CustomerBalanceReservationConflict": "Your balance is held by other open orders and needs a review. Try again once they finish, or contact support.",
++    "Saham:CouponReservationConflict": "This order already holds another coupon or a different amount.",
++    "Saham:CouponReservationNotReserved": "The coupon use of this order is final and cannot be changed.",
++    "Saham:CouponDiscountCannotIncrease": "The coupon discount cannot grow after the order was confirmed.",
++    "Saham:CouponBusy": "This coupon is being used by another order right now. Please try again in a moment.",
+     "Saham:CustomerBalanceBusy": "Another operation on your balance is in progress. Please try again in a moment.",
+     "Saham:CashTenderedTooLow": "The banknote must cover the amount due ({amountDue} IQD).",
+     "Saham:CustomerCannotCancel": "The restaurant has already accepted the order. Contact support to cancel.",
+diff --git a/Saham/SahamErrorCodes.cs b/Saham/SahamErrorCodes.cs
+index 21e7f1d..c0501b6 100644
+--- a/Saham/SahamErrorCodes.cs
++++ b/Saham/SahamErrorCodes.cs
+@@ -65,6 +65,11 @@ public static class SahamErrorCodes
+     // BR-064/BR-071: the balance is promised to open orders beyond what the ledger holds
+     public const string CustomerBalanceReservationConflict = Prefix + "CustomerBalanceReservationConflict";
+     public const string CustomerBalanceBusy = Prefix + "CustomerBalanceBusy";
++    // Coupon uses (CouponReservationCoordinator)
++    public const string CouponReservationConflict = Prefix + "CouponReservationConflict";
++    public const string CouponReservationNotReserved = Prefix + "CouponReservationNotReserved";
++    public const string CouponDiscountCannotIncrease = Prefix + "CouponDiscountCannotIncrease";
++    public const string CouponBusy = Prefix + "CouponBusy";
+     public const string CustomerCannotCancel = Prefix + "CustomerCannotCancel";
+     public const string CancelNoteRequired = Prefix + "CancelNoteRequired";
+     public const string OrderOnHold = Prefix + "OrderOnHold";
+diff --git a/Saham/SahamModule.cs b/Saham/SahamModule.cs
+index b82a7e9..27d09d1 100644
+--- a/Saham/SahamModule.cs
++++ b/Saham/SahamModule.cs
+@@ -374,6 +374,10 @@ public class SahamModule : AbpModule
+             options.Map(SahamErrorCodes.PriceChanged, HttpStatusCode.Conflict);
+             options.Map(SahamErrorCodes.CustomerBalanceReservationConflict, HttpStatusCode.Conflict);
+             options.Map(SahamErrorCodes.CustomerBalanceBusy, HttpStatusCode.Conflict);
++            options.Map(SahamErrorCodes.CouponReservationConflict, HttpStatusCode.Conflict);
++            options.Map(SahamErrorCodes.CouponReservationNotReserved, HttpStatusCode.Conflict);
++            options.Map(SahamErrorCodes.CouponDiscountCannotIncrease, HttpStatusCode.Conflict);
++            options.Map(SahamErrorCodes.CouponBusy, HttpStatusCode.Conflict);
+             options.Map(SahamErrorCodes.OrderOnHold, HttpStatusCode.Conflict);
+             options.Map(SahamErrorCodes.NoItemDecisionPending, HttpStatusCode.Conflict);
+             options.Map(SahamErrorCodes.CustomerCannotCancel, HttpStatusCode.Conflict);
+diff --git a/Saham/Settings/SahamSettingDefinitionProvider.cs b/Saham/Settings/SahamSettingDefinitionProvider.cs
+index 1115c10..f8fe9f9 100644
+--- a/Saham/Settings/SahamSettingDefinitionProvider.cs
++++ b/Saham/Settings/SahamSettingDefinitionProvider.cs
+@@ -23,7 +23,7 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
+         Add(context, SahamSettings.Orders.MaxPrepMinutes, "120");
+         Add(context, SahamSettings.Orders.LateThresholdMinutes, "10");         // ASM-21
+         Add(context, SahamSettings.Orders.QuoteLifetimeMinutes, "10");
+-        Add(context, SahamSettings.Orders.BalanceLockTimeoutSeconds, "30");
++        Add(context, SahamSettings.Orders.BalanceLockTimeoutSeconds, "20"); // < 30 s command timeout
+         Add(context, SahamSettings.Orders.WalletPaymentTimeoutMinutes, "15");  // ASM-17
+         Add(context, SahamSettings.Orders.AddressMinDescriptionLength, "5");   // ASM-22
+         Add(context, SahamSettings.Orders.ScheduleMinLeadMinutes, "60");       // BR-020 / REC-13
+diff --git a/Saham/Settings/SahamSettings.cs b/Saham/Settings/SahamSettings.cs
+index 4bcd465..10c172f 100644
+--- a/Saham/Settings/SahamSettings.cs
++++ b/Saham/Settings/SahamSettings.cs
+@@ -22,7 +22,7 @@ public static class SahamSettings
+         public const string MaxPrepMinutes = Prefix + ".Orders.MaxPrepMinutes";
+         public const string LateThresholdMinutes = Prefix + ".Orders.LateThresholdMinutes";
+         public const string QuoteLifetimeMinutes = Prefix + ".Orders.QuoteLifetimeMinutes";
+-        // Longest wait for the customer balance lock (order creation, ledger postings) before 409 "busy".
++        // Longest wait for the customer balance lock and the coupon row lock before 409 "busy".
+         public const string BalanceLockTimeoutSeconds = Prefix + ".Orders.BalanceLockTimeoutSeconds";
+         public const string WalletPaymentTimeoutMinutes = Prefix + ".Orders.WalletPaymentTimeoutMinutes";
+         public const string AddressMinDescriptionLength = Prefix + ".Orders.AddressMinDescriptionLength";

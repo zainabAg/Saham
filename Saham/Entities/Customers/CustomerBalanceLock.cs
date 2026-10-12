@@ -58,7 +58,8 @@ public class CustomerBalanceLock : ITransientDependency
         }
 
         // A bounded wait: a stuck holder becomes a 409 "try again", never a hung request. It must be longer
-        // than one order creation (≈15 s against a remote database), or a normal second order fails as busy.
+        // than one order creation (≈15 s against a remote database), or a normal second order fails as busy,
+        // and shorter than the 30 s command timeout, or the wait ends as a 500 instead.
         var timeoutSeconds = await _settingProvider.GetAsync<int>(SahamSettings.Orders.BalanceLockTimeoutSeconds);
         try
         {
@@ -67,7 +68,7 @@ public class CustomerBalanceLock : ITransientDependency
             await database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", LockNamespace, KeyOf(customerId));
             await database.ExecuteSqlRawAsync("SELECT set_config('lock_timeout', '0', true)");
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.LockNotAvailable)
+        catch (Exception ex) when (IsLockTimeout(ex))
         {
             throw new BusinessException(SahamErrorCodes.CustomerBalanceBusy);
         }
@@ -84,6 +85,20 @@ public class CustomerBalanceLock : ITransientDependency
         {
             throw new AbpException($"The customer balance lock of {customerId} is not held by this transaction.");
         }
+    }
+
+    /* lock_timeout (55P03), also when EF wraps it ("transient failure"). */
+    public static bool IsLockTimeout(Exception? ex)
+    {
+        for (; ex != null; ex = ex.InnerException)
+        {
+            if (ex is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /* Stable across processes and versions (unlike string.GetHashCode): the 16 bytes folded to 32 bits.

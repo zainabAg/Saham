@@ -3,7 +3,8 @@ using Volo.Abp.Domain.Entities.Auditing;
 
 namespace Saham.Entities.Coupons;
 
-/* One coupon use by one order (SRS table coupon_redemptions; UK order_id). */
+/* One coupon use by one order (SRS table coupon_redemptions; UK order_id).
+ * Status and Amount change only through CouponReservationCoordinator (row lock + conditional UPDATE). */
 public class CouponRedemption : CreationAuditedAggregateRoot<Guid>
 {
     public Guid CouponId { get; private set; }
@@ -31,27 +32,4 @@ public class CouponRedemption : CreationAuditedAggregateRoot<Guid>
         Status = CouponRedemptionStatus.Reserved;
     }
 
-    internal void UpdateAmount(long amount) => Amount = amount;
-
-    internal bool Consume()
-    {
-        if (Status != CouponRedemptionStatus.Reserved)
-        {
-            return false;
-        }
-
-        Status = CouponRedemptionStatus.Consumed;
-        return true;
-    }
-
-    internal bool Release()
-    {
-        if (Status != CouponRedemptionStatus.Reserved)
-        {
-            return false;
-        }
-
-        Status = CouponRedemptionStatus.Released;
-        return true;
-    }
 }
