@@ -81,10 +81,17 @@ public class FcmPushSender : IPushSender
             Tokens = tokens,
             Notification = new FirebaseAdmin.Messaging.Notification { Title = message.Title, Body = message.Body },
             Data = data,
-            Android = new AndroidConfig { Priority = message.HighPriority ? Priority.High : Priority.Normal },
+            Android = new AndroidConfig
+            {
+                Priority = message.HighPriority ? Priority.High : Priority.Normal,
+                CollapseKey = message.CollapseKey,
+                Notification = message.CollapseKey == null ? null : new AndroidNotification { Tag = message.CollapseKey }
+            },
             Apns = new ApnsConfig
             {
-                Headers = new Dictionary<string, string> { ["apns-priority"] = message.HighPriority ? "10" : "5" }
+                Headers = message.CollapseKey == null
+                    ? new Dictionary<string, string> { ["apns-priority"] = message.HighPriority ? "10" : "5" }
+                    : new Dictionary<string, string> { ["apns-priority"] = message.HighPriority ? "10" : "5", ["apns-collapse-id"] = message.CollapseKey }
             }
         });
 

@@ -165,6 +165,7 @@
     "Saham:CouponReservationConflict": "هذا الطلب حجز كوبوناً آخر أو بمبلغ مختلف.",
     "Saham:CouponReservationNotReserved": "استخدام الكوبون لهذا الطلب انتهى ولا يمكن تعديله.",
     "Saham:CouponDiscountCannotIncrease": "لا يمكن زيادة خصم الكوبون بعد تأكيد الطلب.",
+    "Saham:OutboxEventKeyConflict": "تعذر تسجيل الحدث: المفتاح نفسه استُخدم لتغيير آخر.",
     "Saham:CouponBusy": "الكوبون مشغول بطلب آخر الآن. حاول مرة أخرى بعد لحظات.",
     "Saham:CustomerBalanceBusy": "عملية أخرى على رصيدك قيد التنفيذ. حاول مرة أخرى بعد لحظات.",
     "Saham:CashTenderedTooLow": "الورقة النقدية يجب أن تغطي المبلغ المطلوب ({amountDue} دينار).",

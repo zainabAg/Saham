@@ -1208,6 +1208,12 @@ namespace Saham.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
 
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<DateTime>("NextAttemptAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -1244,6 +1250,10 @@ namespace Saham.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LeaseUntil")
+                        .HasDatabaseName("IX_AppNotifications_ExpiredLease")
+                        .HasFilter("\"Status\" = 'Processing'");
+
                     b.HasIndex("OrderId");
 
                     b.HasIndex("Status", "NextAttemptAt");
@@ -1253,7 +1263,10 @@ namespace Saham.Migrations
 
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("EventKey", "Channel", "UserId"), false);
 
-                    b.ToTable("AppNotifications", (string)null);
+                    b.ToTable("AppNotifications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Notifications_Lease", "(\"Status\" = 'Processing') = (\"LeaseToken\" IS NOT NULL AND \"LeaseUntil\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Saham.Entities.Notifications.OutboxEvent", b =>
@@ -1302,6 +1315,10 @@ namespace Saham.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EventKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AppOutboxEvents_EventKey");
+
                     b.HasIndex("Id")
                         .HasDatabaseName("IX_AppOutboxEvents_Unpublished")
                         .HasFilter("\"PublishedAt\" IS NULL");
@@ -1336,6 +1353,10 @@ namespace Saham.Migrations
                         .HasColumnType("text")
                         .HasColumnName("ExtraProperties");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("LastError")
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
@@ -1366,6 +1387,10 @@ namespace Saham.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreationTime");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
 
                     b.HasIndex("PhoneNumber", "CreationTime");
 

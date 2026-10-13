@@ -1,26 +1,31 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Saham.Data;
 using Saham.Entities.Notifications;
+using Saham.Infrastructure.Outbox;
 using Volo.Abp.BackgroundWorkers;
 using Volo.Abp.Domain.Repositories;
-using Volo.Abp.Linq;
+using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Threading;
 using Volo.Abp.Timing;
 using Volo.Abp.Uow;
 
 namespace Saham.BackgroundWorkers;
 
-/* The outbox relay and the notification queue (SRS I-6), swept from the database so nothing is
- * lost on restart:
- *   1. OutboxRelay.publishPending: each unpublished event becomes its notifications and is stamped
- *      published, in one transaction (NotificationPlanner);
- *   2. NotificationService.processDue: each due notification is sent, retried with growing gaps,
- *      then given up (NotificationSender).
- * Every item runs in its own transaction: one bad item never blocks the others. */
+/* The outbox relay and the notification queue (SRS I-6, Phase 6) — the ONLY sender of outbox
+ * notifications; safe with several backend instances:
+ *   1. relay: each committed, unpublished event is locked (FOR UPDATE SKIP LOCKED), turned into its
+ *      notifications (one per channel + recipient, unique) and stamped published — one short
+ *      transaction, no provider call inside it;
+ *   2. delivery: NotificationQueue → OutboxProcessor claims one notification at a time under a lease,
+ *      calls the provider outside any transaction, and records the outcome only while it owns the lease.
+ * A database error ends the cycle; the next tick starts again. On shutdown an in-flight send is
+ * abandoned without recording success; its lease expires and another worker takes it back. */
 public class NotificationDispatchWorker : AsyncPeriodicBackgroundWorkerBase
 {
     private const int OutboxBatchSize = 100;
@@ -34,50 +39,75 @@ public class NotificationDispatchWorker : AsyncPeriodicBackgroundWorkerBase
 
     protected override async Task DoWorkAsync(PeriodicBackgroundWorkerContext workerContext)
     {
-        await PublishPendingAsync(workerContext.ServiceProvider);
-        await SendDueAsync(workerContext.ServiceProvider);
+        var services = workerContext.ServiceProvider;
+        var health = services.GetRequiredService<NotificationWorkerHealth>();
+        var clock = services.GetRequiredService<IClock>();
+        try
+        {
+            await PublishPendingAsync(services, workerContext.CancellationToken);
+            var result = await services.GetRequiredService<NotificationQueue>()
+                .RunOnceAsync(NotificationBatchSize, workerContext.CancellationToken);
+            health.Succeeded(clock.Now, result.LostLeases);
+            if (result.LostLeases > 0)
+            {
+                Logger.LogWarning("Notification queue: {Lost} lease(s) lost before the outcome was recorded", result.LostLeases);
+            }
+        }
+        catch (OperationCanceledException) when (workerContext.CancellationToken.IsCancellationRequested)
+        {
+            // Shutting down: nothing was recorded as sent; leases expire and are claimed again.
+        }
+        catch (Exception ex)
+        {
+            health.Failed(clock.Now, ex);
+            // The exception type only: provider/DB messages may carry phone numbers, tokens or codes.
+            Logger.LogWarning("Notification worker cycle failed ({ErrorType}); retrying on the next tick", ex.GetType().Name);
+        }
     }
 
-    private async Task PublishPendingAsync(IServiceProvider services)
+    private async Task PublishPendingAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         var unitOfWorkManager = services.GetRequiredService<IUnitOfWorkManager>();
         var repository = services.GetRequiredService<IRepository<OutboxEvent, long>>();
         var planner = services.GetRequiredService<NotificationPlanner>();
         var clock = services.GetRequiredService<IClock>();
-        var asyncExecuter = services.GetRequiredService<IAsyncQueryableExecuter>();
+        var contextProvider = services.GetRequiredService<IDbContextProvider<SahamDbContext>>();
 
-        List<long> ids;
-        using (var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: false))
+        for (var i = 0; i < OutboxBatchSize; i++)
         {
-            ids = await asyncExecuter.ToListAsync((await repository.GetQueryableAsync())
-                .Where(e => e.PublishedAt == null)
-                .OrderBy(e => e.Id)
-                .Select(e => e.Id)
-                .Take(OutboxBatchSize));
-            await uow.CompleteAsync();
-        }
-
-        foreach (var id in ids)
-        {
-            try
+            cancellationToken.ThrowIfCancellationRequested();
+            long? failedId = null;
+            Exception? failure = null;
+            using (var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
             {
-                using var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-                var outboxEvent = await repository.GetAsync(id);
-                if (outboxEvent.PublishedAt != null)
+                // Locked until this transaction ends; another instance skips it and takes the next one.
+                var db = await contextProvider.GetDbContextAsync();
+                var outboxEvent = (await db.Set<OutboxEvent>()
+                        .FromSqlRaw("""SELECT * FROM "AppOutboxEvents" WHERE "PublishedAt" IS NULL ORDER BY "Id" LIMIT 1 FOR UPDATE SKIP LOCKED""")
+                        .ToListAsync(cancellationToken))
+                    .FirstOrDefault();
+                if (outboxEvent == null)
                 {
-                    continue;
+                    return;
                 }
 
-                await planner.PlanAsync(outboxEvent);
-                outboxEvent.MarkPublished(clock.Now);
-                await repository.UpdateAsync(outboxEvent);
-                await uow.CompleteAsync();
+                try
+                {
+                    await planner.PlanAsync(outboxEvent);
+                    outboxEvent.MarkPublished(clock.Now);
+                    await repository.UpdateAsync(outboxEvent);
+                    await uow.CompleteAsync(cancellationToken);
+                    continue;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failedId = outboxEvent.Id;
+                    failure = ex;
+                }
             }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Outbox event {OutboxEventId} could not be published", id);
-                await RecordPublishFailureAsync(unitOfWorkManager, repository, clock, id, ex);
-            }
+
+            Logger.LogWarning("Outbox event {OutboxEventId} could not be published ({ErrorType})", failedId, failure!.GetType().Name);
+            await RecordPublishFailureAsync(unitOfWorkManager, repository, clock, failedId!.Value, failure);
         }
     }
 
@@ -88,50 +118,13 @@ public class NotificationDispatchWorker : AsyncPeriodicBackgroundWorkerBase
         {
             using var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var outboxEvent = await repository.GetAsync(id);
-            outboxEvent.MarkFailed(error.Message, clock.Now);
+            outboxEvent.MarkFailed(error.GetType().Name, clock.Now); // a safe code, not the message
             await repository.UpdateAsync(outboxEvent);
             await uow.CompleteAsync();
         }
         catch
         {
             // Retried on the next sweep.
-        }
-    }
-
-    private async Task SendDueAsync(IServiceProvider services)
-    {
-        var unitOfWorkManager = services.GetRequiredService<IUnitOfWorkManager>();
-        var repository = services.GetRequiredService<IRepository<Notification, Guid>>();
-        var sender = services.GetRequiredService<NotificationSender>();
-        var asyncExecuter = services.GetRequiredService<IAsyncQueryableExecuter>();
-        var now = services.GetRequiredService<IClock>().Now;
-
-        List<Guid> ids;
-        using (var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: false))
-        {
-            ids = await asyncExecuter.ToListAsync((await repository.GetQueryableAsync())
-                .Where(n => (n.Status == NotificationStatus.Queued || n.Status == NotificationStatus.Failed) && n.NextAttemptAt <= now)
-                .OrderByDescending(n => n.HighPriority)
-                .ThenBy(n => n.NextAttemptAt)
-                .Select(n => n.Id)
-                .Take(NotificationBatchSize));
-            await uow.CompleteAsync();
-        }
-
-        foreach (var id in ids)
-        {
-            try
-            {
-                using var uow = unitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-                var notification = await repository.GetAsync(id);
-                await sender.SendAsync(notification);
-                await repository.UpdateAsync(notification);
-                await uow.CompleteAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Notification {NotificationId} could not be processed", id);
-            }
         }
     }
 }

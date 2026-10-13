@@ -19,6 +19,8 @@ public static class NotificationsConfiguration
             b.Property(x => x.Provider).HasMaxLength(64);
             b.Property(x => x.ProviderMessageId).HasMaxLength(128);
             b.Property(x => x.LastError).HasMaxLength(1024);
+            b.Property(x => x.IdempotencyKey).HasMaxLength(64);
+            b.HasIndex(x => x.IdempotencyKey).IsUnique().HasFilter("\"IdempotencyKey\" IS NOT NULL");
             b.HasIndex(x => new { x.PhoneNumber, x.CreationTime });
             b.HasIndex(x => x.CreationTime);
         });
@@ -33,6 +35,8 @@ public static class NotificationsConfiguration
             b.Property(x => x.AggregateType).IsRequired().HasMaxLength(64);
             b.Property(x => x.Payload).IsRequired().HasColumnType("jsonb");
             b.Property(x => x.LastError).HasMaxLength(1024);
+            // Phase 6: one row per logical change; a retry with the same key and content reuses it.
+            b.HasIndex(x => x.EventKey).IsUnique().HasDatabaseName("UX_AppOutboxEvents_EventKey");
             // The relay only ever reads the unpublished tail.
             b.HasIndex(x => x.Id).HasFilter("\"PublishedAt\" IS NULL").HasDatabaseName("IX_AppOutboxEvents_Unpublished");
             b.HasIndex(x => new { x.AggregateType, x.AggregateId });
@@ -53,6 +57,10 @@ public static class NotificationsConfiguration
             // SRS: UK (event_key, channel, user_id) — never the same notification twice.
             b.HasIndex(x => new { x.EventKey, x.Channel, x.UserId }).IsUnique().AreNullsDistinct(false);
             b.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            // Phase 6: claimed messages whose worker died are found by their expired lease.
+            b.HasIndex(x => x.LeaseUntil).HasFilter("\"Status\" = 'Processing'").HasDatabaseName("IX_AppNotifications_ExpiredLease");
+            b.ToTable(t => t.HasCheckConstraint("CK_Notifications_Lease",
+                "(\"Status\" = 'Processing') = (\"LeaseToken\" IS NOT NULL AND \"LeaseUntil\" IS NOT NULL)"));
             b.HasIndex(x => x.OrderId);
         });
 

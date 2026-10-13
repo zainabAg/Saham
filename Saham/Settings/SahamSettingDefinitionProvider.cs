@@ -74,7 +74,10 @@ public class SahamSettingDefinitionProvider : SettingDefinitionProvider
 
         // Notifications (REQ-NTF-02: 3 attempts with growing gaps: 30 s, 60 s)
         Add(context, SahamSettings.Notifications.MaxAttempts, "3");
-        Add(context, SahamSettings.Notifications.RetryBaseSeconds, "30");
+        Add(context, SahamSettings.Notifications.RetryBaseSeconds, "30");      // first retry 15–30 s (equal jitter)
+        Add(context, SahamSettings.Notifications.MaxRetryDelaySeconds, "900"); // cap 15 min
+        Add(context, SahamSettings.Notifications.LeaseSeconds, "90");          // > send timeout + 10 s
+        Add(context, SahamSettings.Notifications.SendTimeoutSeconds, "20");
 
         // Support
         Add(context, SahamSettings.Support.OpsCompensationLimit, "5000");      // DEC-11

@@ -47,7 +47,15 @@ public class Notification : CreationAuditedAggregateRoot<Guid>
 
     public string? ProviderMessageId { get; private set; }
 
+    /* Safe error code only (e.g. PROVIDER_TIMEOUT_OUTCOME_UNKNOWN), never provider text or a phone number. */
     public string? LastError { get; private set; }
+
+    /* Phase 6: the worker that claimed the message owns it until LeaseUntil (database time, UTC).
+     * State changes are conditional UPDATEs in NotificationOutboxStore, so an old worker cannot
+     * overwrite a newer claim. */
+    public Guid? LeaseToken { get; private set; }
+
+    public DateTime? LeaseUntil { get; private set; }
 
     protected Notification()
     {
@@ -81,40 +89,9 @@ public class Notification : CreationAuditedAggregateRoot<Guid>
     public IReadOnlyList<string> GetArgs() =>
         JsonSerializer.Deserialize<NotificationPayload>(Payload)?.Args ?? (IReadOnlyList<string>)Array.Empty<string>();
 
-    public bool IsDue(DateTime now) =>
-        Status is NotificationStatus.Queued or NotificationStatus.Failed && NextAttemptAt <= now;
-
-    public void MarkSent(string? providerMessageId, DateTime now)
-    {
-        Attempts++;
-        Status = NotificationStatus.Sent;
-        SentAt = now;
-        ProviderMessageId = providerMessageId;
-        LastError = null;
-    }
-
-    /* REQ-NTF-02: retry with growing gaps (base, 2×base, 4×base...), then give up. */
-    public void MarkFailed(string error, int maxAttempts, int retryBaseSeconds, DateTime now)
-    {
-        Attempts++;
-        LastError = Truncate(error);
-        if (Attempts >= maxAttempts)
-        {
-            Status = NotificationStatus.Dead;
-            return;
-        }
-
-        Status = NotificationStatus.Failed;
-        NextAttemptAt = now.AddSeconds(retryBaseSeconds * Math.Pow(2, Attempts - 1));
-    }
-
-    public void MarkExpired()
-    {
-        Status = NotificationStatus.Dead;
-        LastError = "EXPIRED";
-    }
-
-    /* Ops may give a dead message another round (e.g. after the provider came back). */
+    /* Ops may give a dead message another round (e.g. after the provider came back). The row, its
+     * EventKey and its id (the provider idempotency key) stay the same; a Sent message is never resent.
+     * Sending, retries and giving up are NotificationOutboxStore's (claim / lease / conditional ack). */
     public void Requeue(DateTime now)
     {
         if (Status != NotificationStatus.Dead)
@@ -126,9 +103,9 @@ public class Notification : CreationAuditedAggregateRoot<Guid>
         Attempts = 0;
         NextAttemptAt = now;
         ExpiresAt = null;
+        LeaseToken = null;
+        LeaseUntil = null;
     }
-
-    private static string Truncate(string error) => error.Length > ErrorMaxLength ? error[..ErrorMaxLength] : error;
 }
 
 public record NotificationPayload(IReadOnlyList<string> Args);

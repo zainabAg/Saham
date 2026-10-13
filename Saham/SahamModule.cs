@@ -378,6 +378,7 @@ public class SahamModule : AbpModule
             options.Map(SahamErrorCodes.CouponReservationNotReserved, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.CouponDiscountCannotIncrease, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.CouponBusy, HttpStatusCode.Conflict);
+            options.Map(SahamErrorCodes.OutboxEventKeyConflict, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.OrderOnHold, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.NoItemDecisionPending, HttpStatusCode.Conflict);
             options.Map(SahamErrorCodes.CustomerCannotCancel, HttpStatusCode.Conflict);

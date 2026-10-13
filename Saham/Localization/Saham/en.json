@@ -175,6 +175,7 @@
     "Saham:CouponReservationConflict": "This order already holds another coupon or a different amount.",
     "Saham:CouponReservationNotReserved": "The coupon use of this order is final and cannot be changed.",
     "Saham:CouponDiscountCannotIncrease": "The coupon discount cannot grow after the order was confirmed.",
+    "Saham:OutboxEventKeyConflict": "The event could not be recorded: its key was already used for another change.",
     "Saham:CouponBusy": "This coupon is being used by another order right now. Please try again in a moment.",
     "Saham:CustomerBalanceBusy": "Another operation on your balance is in progress. Please try again in a moment.",
     "Saham:CashTenderedTooLow": "The banknote must cover the amount due ({amountDue} IQD).",

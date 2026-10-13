@@ -94,6 +94,10 @@ public static class SahamSettings
     {
         public const string MaxAttempts = Prefix + ".Notifications.MaxAttempts";
         public const string RetryBaseSeconds = Prefix + ".Notifications.RetryBaseSeconds";
+        // Phase 6 delivery (operational defaults, not SRS rules)
+        public const string MaxRetryDelaySeconds = Prefix + ".Notifications.MaxRetryDelaySeconds";
+        public const string LeaseSeconds = Prefix + ".Notifications.LeaseSeconds";
+        public const string SendTimeoutSeconds = Prefix + ".Notifications.SendTimeoutSeconds";
     }
 
     public static class Support

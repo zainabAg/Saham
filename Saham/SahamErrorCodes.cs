@@ -70,6 +70,8 @@ public static class SahamErrorCodes
     public const string CouponReservationNotReserved = Prefix + "CouponReservationNotReserved";
     public const string CouponDiscountCannotIncrease = Prefix + "CouponDiscountCannotIncrease";
     public const string CouponBusy = Prefix + "CouponBusy";
+    // Outbox (Phase 6): the same event key reused for a different change
+    public const string OutboxEventKeyConflict = Prefix + "OutboxEventKeyConflict";
     public const string CustomerCannotCancel = Prefix + "CustomerCannotCancel";
     public const string CancelNoteRequired = Prefix + "CancelNoteRequired";
     public const string OrderOnHold = Prefix + "OrderOnHold";

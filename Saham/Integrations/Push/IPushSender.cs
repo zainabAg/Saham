@@ -10,4 +10,6 @@ public interface IPushSender
     Task<string?> SendAsync(PushMessage message);
 }
 
-public record PushMessage(Guid UserId, string Title, string Body, bool HighPriority, Guid? OrderId);
+/* CollapseKey (Phase 6): the notification id; a resend after a crash replaces the shown notification
+ * instead of adding a second one (FCM has no idempotency key, so this is best effort). */
+public record PushMessage(Guid UserId, string Title, string Body, bool HighPriority, Guid? OrderId, string? CollapseKey = null);
